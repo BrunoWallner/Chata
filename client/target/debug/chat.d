@@ -1,0 +1,1 @@
+/home/luca/Documents/rust/chat/target/debug/chat: /home/luca/Documents/rust/chat/src/main.rs /home/luca/Documents/rust/cli_gui/src/lib.rs /home/luca/Documents/rust/cli_gui/src/terminal.rs /home/luca/Documents/rust/cli_gui/src/window.rs
