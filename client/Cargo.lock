@@ -24,7 +24,6 @@ dependencies = [
 [[package]]
 name = "cli_gui"
 version = "0.1.1"
-source = "git+https://github.com/BrunoWallner/cli_gui?branch=nightly#3ace8f861cc56f2f16e28145ebac7dc08f5f3d53"
 dependencies = [
  "crossterm",
  "rand",
