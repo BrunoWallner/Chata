@@ -1,11 +1,10 @@
 [package]
-name = "chat"
+name = "client"
 version = "0.1.0"
-authors = ["luca <b.luca>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#cli_gui = { git = "https://github.com/BrunoWallner/cli_gui", branch = "nightly" }
-cli_gui = { path = "../../cli_gui" }
+iced = "0.3.0"
+chrono = "0.4.19"
