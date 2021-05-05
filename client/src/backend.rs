@@ -15,10 +15,9 @@ pub fn login(ip: String, name: String, password: String) -> Result<[u8; 256], St
 
             stream.write(&msg).unwrap();
 
-            let mut data = [0 as u8; 256]; // using 6 byte buffer
+            let mut data = [0 as u8; 256]; // using 8 KB buffer
             match stream.read_exact(&mut data) {
                 Ok(_) => {
-                    //panic!("{:#?}", data);
                     if data == [0 as u8; 256] {
                         return Err("invalid login".to_string());
                     } else {
@@ -31,11 +30,9 @@ pub fn login(ip: String, name: String, password: String) -> Result<[u8; 256], St
             }
         },
         Err(_) => {
-            return Err("Failed to connect".to_string());
+            return Err("Server unreachable".to_string());
         }
     }
-    println!("Terminated.");
-    return Err("connection terminated".to_string());
 }
 fn create_login(name: String, password: String) -> [u8; 8192] {
     let mut buffer = [0x00 as u8; 8192];

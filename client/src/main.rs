@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use iced::{
     button, scrollable, slider, text_input, Align, Button, Checkbox, Column,
     Container, Element, Length, ProgressBar, Radio, Row, Rule, Sandbox,
