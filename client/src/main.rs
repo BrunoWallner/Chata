@@ -1,14 +1,14 @@
 #![allow(unused_imports)]
 use iced::{
-    button, scrollable, slider, text_input, Align, Button, Checkbox, Column,
-    Container, Element, Length, ProgressBar, Radio, Row, Rule, Sandbox,
-    Scrollable, Settings, Slider, Space, Text, TextInput,
+    button, scrollable, slider, text_input, Align, Button, Checkbox, Column, Container, Element,
+    Length, ProgressBar, Radio, Row, Rule, Sandbox, Scrollable, Settings, Slider, Space, Text,
+    TextInput,
 };
 
 use std::str::from_utf8;
 
-mod style;
 mod backend;
+mod style;
 
 pub fn main() -> iced::Result {
     Styling::run(Settings {
@@ -53,10 +53,16 @@ impl Sandbox for Styling {
             Message::ThemeChanged(theme) => self.theme = theme,
             Message::NameChanged(value) => self.input_name = value,
             Message::PasswdChanged(value) => self.input_passwd = value,
-            Message::LoginButtonPressed => {self.login_status = match backend::login("localhost".to_string(), self.input_name.clone(), self.input_passwd.clone()) {
-                Ok(token) => from_utf8(&token).unwrap().to_string(),
-                Err(e) => e,
-            }},
+            Message::LoginButtonPressed => {
+                self.login_status = match backend::login(
+                    "localhost".to_string(),
+                    self.input_name.clone(),
+                    self.input_passwd.clone(),
+                ) {
+                    Ok(_) => "good".to_string(),
+                    Err(_) => "bad".to_string(),
+                }
+            }
         }
     }
 
@@ -85,7 +91,7 @@ impl Sandbox for Styling {
         .padding(10)
         .size(20)
         .style(self.theme);
-        
+
         let passwd_input = TextInput::new(
             &mut self.passwd_input_state,
             "Password...",
@@ -103,18 +109,17 @@ impl Sandbox for Styling {
 
         let text_field = Text::new(self.login_status.clone());
 
-
         let content = Column::new()
             .spacing(10)
             .padding(10)
             .max_width(600)
-            .push(choose_theme).padding(10)
+            .push(choose_theme)
+            .padding(10)
             .push(Rule::horizontal(40).style(self.theme))
             .push(name_input)
             .push(passwd_input)
             .push(login_button)
             .push(text_field);
-
 
         Container::new(content)
             .width(Length::Fill)

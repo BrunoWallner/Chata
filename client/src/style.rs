@@ -1,6 +1,5 @@
 use iced::{
-    button, checkbox, container, progress_bar, radio, rule, scrollable,
-    slider, text_input,
+    button, checkbox, container, progress_bar, radio, rule, scrollable, slider, text_input,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,43 +101,26 @@ impl From<Theme> for Box<dyn rule::StyleSheet> {
 
 mod light {
     use iced::{
-        button, checkbox, container, progress_bar, radio, rule, scrollable,
-        slider, text_input, Color,
+        button, checkbox, container, progress_bar, radio, rule, scrollable, slider, text_input,
+        Color,
     };
 
-    const SURFACE: Color = Color::from_rgb(
-        175 as f32 / 255.0,
-        175 as f32 / 255.0,
-        175 as f32 / 255.0,
-    );
+    const SURFACE: Color =
+        Color::from_rgb(175 as f32 / 255.0, 175 as f32 / 255.0, 175 as f32 / 255.0);
 
-    const ACCENT: Color = Color::from_rgb(
-        0 as f32 / 255.0,
-        100 as f32 / 255.0,
-        200 as f32 / 255.0,
-    );
+    const ACCENT: Color = Color::from_rgb(0 as f32 / 255.0, 100 as f32 / 255.0, 200 as f32 / 255.0);
 
-    const ACTIVE: Color = Color::from_rgb(
-        0 as f32 / 255.0,
-        100 as f32 / 255.0,
-        200 as f32 / 255.0,
-    );
+    const ACTIVE: Color = Color::from_rgb(0 as f32 / 255.0, 100 as f32 / 255.0, 200 as f32 / 255.0);
 
-    const HOVERED: Color = Color::from_rgb(
-        0 as f32 / 255.0,
-        150 as f32 / 255.0,
-        250 as f32 / 255.0,
-    );
-
+    const HOVERED: Color =
+        Color::from_rgb(0 as f32 / 255.0, 150 as f32 / 255.0, 250 as f32 / 255.0);
 
     pub struct Container;
 
     impl container::StyleSheet for Container {
         fn style(&self) -> container::Style {
             container::Style {
-                background: Color::from_rgb8(
-                    255, 255, 255
-                ).into(),
+                background: Color::from_rgb8(255, 255, 255).into(),
                 text_color: Color::BLACK.into(),
                 ..container::Style::default()
             }
@@ -336,8 +318,7 @@ mod light {
     impl checkbox::StyleSheet for Checkbox {
         fn active(&self, is_checked: bool) -> checkbox::Style {
             checkbox::Style {
-                background: if is_checked { ACTIVE } else { SURFACE }
-                    .into(),
+                background: if is_checked { ACTIVE } else { SURFACE }.into(),
                 checkmark_color: Color::WHITE,
                 border_radius: 5.0,
                 border_width: 2.0,
@@ -373,15 +354,11 @@ mod light {
 
 mod dark {
     use iced::{
-        button, checkbox, container, progress_bar, radio, rule, scrollable,
-        slider, text_input, Color,
+        button, checkbox, container, progress_bar, radio, rule, scrollable, slider, text_input,
+        Color,
     };
 
-    const SURFACE: Color = Color::from_rgb(
-        55 as f32 / 255.0,
-        55 as f32 / 255.0,
-        55 as f32 / 255.0,
-    );
+    const SURFACE: Color = Color::from_rgb(55 as f32 / 255.0, 55 as f32 / 255.0, 55 as f32 / 255.0);
 
     const ACCENT: Color = Color::from_rgb(
         0x6F as f32 / 255.0,
@@ -389,26 +366,18 @@ mod dark {
         0xE9 as f32 / 255.0,
     );
 
-    const ACTIVE: Color = Color::from_rgb(
-        100 as f32 / 255.0,
-        85 as f32 / 255.0,
-        150 as f32 / 255.0,
-    );
+    const ACTIVE: Color =
+        Color::from_rgb(100 as f32 / 255.0, 85 as f32 / 255.0, 150 as f32 / 255.0);
 
-    const HOVERED: Color = Color::from_rgb(
-        69 as f32 / 255.0,
-        117 as f32 / 255.0,
-        81 as f32 / 255.0,
-    );
+    const HOVERED: Color =
+        Color::from_rgb(69 as f32 / 255.0, 117 as f32 / 255.0, 81 as f32 / 255.0);
 
     pub struct Container;
 
     impl container::StyleSheet for Container {
         fn style(&self) -> container::Style {
             container::Style {
-                background: Color::from_rgb8(
-                    35, 35, 40
-                ).into(),
+                background: Color::from_rgb8(35, 35, 40).into(),
                 text_color: Color::WHITE.into(),
                 ..container::Style::default()
             }
@@ -606,8 +575,7 @@ mod dark {
     impl checkbox::StyleSheet for Checkbox {
         fn active(&self, is_checked: bool) -> checkbox::Style {
             checkbox::Style {
-                background: if is_checked { ACTIVE } else { SURFACE }
-                    .into(),
+                background: if is_checked { ACTIVE } else { SURFACE }.into(),
                 checkmark_color: Color::WHITE,
                 border_radius: 5.0,
                 border_width: 2.0,

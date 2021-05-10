@@ -7,4 +7,4 @@ edition = "2018"
 
 [dependencies]
 iced = "0.3.0"
-chrono = "0.4.19"
+tokio = "1.5.0"
