@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use iced::{
-    button, scrollable, slider, text_input, Align, Button, Checkbox, Column, Container, Element,
-    Length, ProgressBar, Radio, Row, Rule, Sandbox, Scrollable, Settings, Slider, Space, Text,
-    TextInput,
+    button, scrollable, slider, text_input, Align, Button, Checkbox, Column,
+    Container, Element, Length, ProgressBar, Radio, Row, Rule, Sandbox,
+    Scrollable, Settings, Slider, Space, Text, TextInput,
 };
 
 use std::str::from_utf8;
@@ -29,30 +29,59 @@ pub fn main() -> iced::Result {
 struct Chat {
     socket: Socket,
 
+    // general
     theme: style::Theme,
     status: Status,
-
-    name_input_state: text_input::State,
-    passwd_input_state: text_input::State,
     token: Vec<u8>,
-    input_name: String,
-    input_passwd: String,
+    auth_choice: AuthChoice,
+
+    // login
+    login_name_input_state: text_input::State,
+    login_passwd_input_state: text_input::State,
+    login_input_name: String,
+    login_input_passwd: String,
     login_button: button::State,
 
+    // signup
+    signup_name_input_state: text_input::State,
+    signup_passwd_input_state: text_input::State,
+    signup_input_name: String,
+    signup_input_passwd: String,
+    signup_button: button::State,
+
+    //chat
     chat_input_state: text_input::State,
     chat_input: String,
     chat_input_id_state: text_input::State,
     chat_input_id: String,
     chat_send_button: button::State,
 
+    messages: Vec<backend::Message>,
+    messages_scroll_state: scrollable::State,
+
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthChoice {
+    Login,
+    Signup,
+}
+impl Default for AuthChoice {
+    fn default() -> Self {AuthChoice::Login}
 }
 
 #[derive(Debug, Clone)]
 enum Message {
+    AuthChanged(AuthChoice),
     ThemeChanged(style::Theme),
-    NameChanged(String),
-    PasswdChanged(String),
+
+    LoginNameChanged(String),
+    LoginPasswdChanged(String),
     LoginButtonPressed,
+
+    SignupNameChanged(String),
+    SignupPasswdChanged(String),
+    SignupButtonPressed,
 
     ChatMessageChanged(String),
     ChatMessageIDChanged(String),
@@ -102,13 +131,13 @@ impl Sandbox for Chat {
     fn update(&mut self, message: Message) {
         match message {
             Message::ThemeChanged(theme) => self.theme = theme,
-            Message::NameChanged(value) => self.input_name = value,
-            Message::PasswdChanged(value) => self.input_passwd = value,
+            Message::LoginNameChanged(value) => self.login_input_name = value,
+            Message::LoginPasswdChanged(value) => self.login_input_passwd = value,
             Message::LoginButtonPressed => {
                 self.token = match backend::login(
                     &mut self.socket,
-                    self.input_name.clone(),
-                    self.input_passwd.clone(),
+                    self.login_input_name.clone(),
+                    self.login_input_passwd.clone(),
                 ) {
                     Ok(token) => {
                         self.status = Status::Chat;
@@ -133,8 +162,30 @@ impl Sandbox for Chat {
                     Ok(_) => (),
                     Err(_) => (),
                 }
+                
                 self.chat_input = "".to_string();
+
+                self.messages = match backend::recieve_messages(
+                    &mut self.socket, 
+                    &self.token,
+                ) {
+                    Ok(messages) => messages,
+                    Err(_) => Vec::new(),
+                };
             }
+            Message::AuthChanged(value) => {
+                match value {
+                    AuthChoice::Login => {
+                        self.auth_choice = AuthChoice::Login;
+                        self.status = Status::Login;
+                    }
+                    AuthChoice::Signup => {
+                        self.auth_choice = AuthChoice::Signup;
+                        self.status = Status::Signup;
+                    }
+                }
+
+            },
             _ => ()
         }
     }
@@ -156,23 +207,50 @@ impl Sandbox for Chat {
             }
         );
 
+        let login_or_signup = Column::new()
+            .push(
+                Row::new()
+                .spacing(20)
+                .align_items(Align::Center)
+                .push(
+                    Radio::new(
+                        AuthChoice::Login,
+                        "Login",
+                        Some(self.auth_choice),
+                        Message::AuthChanged,
+                    )
+                    .style(self.theme)
+                )
+                .push(
+                    Radio::new(
+                        AuthChoice::Signup,
+                        "Signup",
+                        Some(self.auth_choice),
+                        Message::AuthChanged,
+                    )
+                    .style(self.theme)
+                )
+                .align_items(Align::End)
+            );
+
+
         let content = match self.status {
             Status::Login | Status::InvalidLogin => {
                 let name_input = TextInput::new(
-                    &mut self.name_input_state,
+                    &mut self.login_name_input_state,
                     "Name...",
-                    &self.input_name,
-                    Message::NameChanged,
+                    &self.login_input_name,
+                    Message::LoginNameChanged,
                 )
                 .padding(10)
                 .size(20)
                 .style(self.theme);
         
                 let passwd_input = TextInput::new(
-                    &mut self.passwd_input_state,
+                    &mut self.login_passwd_input_state,
                     "Password...",
-                    &self.input_passwd,
-                    Message::PasswdChanged,
+                    &self.login_input_passwd,
+                    Message::LoginPasswdChanged,
                 )
                 .padding(10)
                 .size(20)
@@ -197,11 +275,57 @@ impl Sandbox for Chat {
                     .push(theme_choosing)
                     .padding(10)
                     .push(Rule::horizontal(40).style(self.theme))
+                    .push(login_or_signup)
                     .push(name_input)
                     .push(passwd_input)
                     .push(login_button)
                     .push(text_field)
             },
+            
+            Status::Signup => {
+                let name_input = TextInput::new(
+                    &mut self.signup_name_input_state,
+                    "Name...",
+                    &self.login_input_name,
+                    Message::SignupNameChanged,
+                )
+                .padding(10)
+                .size(20)
+                .style(self.theme);
+        
+                let passwd_input = TextInput::new(
+                    &mut self.signup_passwd_input_state,
+                    "Password...",
+                    &self.login_input_passwd,
+                    Message::SignupPasswdChanged,
+                )
+                .padding(10)
+                .size(20)
+                .style(self.theme);
+        
+                let signup_button = Button::new(&mut self.signup_button, Text::new("Sign in"))
+                    .padding(10)
+                    .on_press(Message::SignupButtonPressed)
+                    .style(self.theme);
+        
+                let text_field = Text::new(match self.status {
+                    Status::Login => "",
+                    Status::InvalidLogin => "invalid login",
+                    _ => "bad"
+                });
+                Column::new()
+                    .align_items(Align::Center)
+                    .max_width(600)
+                    .spacing(10)
+                    .padding(10)
+
+                    .push(theme_choosing)
+                    .push(Rule::horizontal(40).style(self.theme))
+                    .push(login_or_signup)
+                    .push(name_input)
+                    .push(passwd_input)
+                    .push(signup_button)
+            }
 
             Status::Chat => {
                 let chat_input_id = TextInput::new(
@@ -229,6 +353,22 @@ impl Sandbox for Chat {
                     .style(self.theme)
                     .on_press(Message::ChatMessageSent);
 
+                let mut messages: String = String::new();
+                for i in self.messages.iter() {
+                    messages += i.id.as_str();
+                    messages += ":   ";
+                    messages += i.value.as_str();
+                    messages += "\n";
+                }
+
+
+                let scrollable = Scrollable::new(&mut self.messages_scroll_state)
+                    .spacing(10)
+                    .padding(10)
+                    .max_width(600)
+                    .max_height(300)
+                    .push(Text::new(messages));
+
                 Column::new()
                     .align_items(Align::Center)
                     .max_width(600)
@@ -236,6 +376,7 @@ impl Sandbox for Chat {
                     .padding(10)
                     .push(theme_choosing)
                     .push(Rule::horizontal(40).style(self.theme))
+                    .push(scrollable)
                     .push(Column::new()
                         .spacing(10)
                         .padding(10)

@@ -44,9 +44,11 @@ fn main() -> std::io::Result<()> {
         file.read_to_end(&mut encoded)?;
     
         let mut accounts: Vec<Account> = bincode::deserialize(&encoded).unwrap();
-
-        println!("{:#?}", accounts[0].id);
         //
+        println!("> List of all accounts: ");
+        for i in 0..accounts.len() {
+            println!("  => {}", accounts[i].id);
+        }
         
 
         /*
@@ -228,16 +230,72 @@ fn handel_client(mut stream: TcpStream, accounts: &mut Vec<Account>) -> std::io:
                                     },
                                     Err(_) => {
                                         println!("> couldnt find user with id");
-                                        stream.write(&[1; 8]).unwrap();
                                     },
                                 }
                             }
-                            Err(_) => println!("invalid token")
+                            Err(_) => {
+                                println!("> invalid token");
+                            }
                         }
                     },
                     // message pull request
                     [0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00] => {
-                        
+                        println!("> message pull request");
+                        let mut buffer = [0u8; 256];
+                        stream.read_exact(&mut buffer)?;
+                        println!("> recieved token");
+
+                        let token = &buffer[1..buffer[0] as usize + 1];
+
+                        match check_token(&accounts, token) {
+                            Ok(account_number) => {
+                                println!("> valid token");
+                                // imports userdata from ./userdata/[USERID]
+                                let string_id = &accounts[account_number].id.clone();
+
+                                let mut file = match File::open("userdata/".to_string() + &string_id.clone()) {
+                                    Ok(file) => {
+                                        println!("> successfully opened file");
+                                        file
+                                    }
+                                    Err(_) => { 
+                                        println!("> could not open file, created new empty one");
+                                        File::create("userdata/".to_string() + &string_id.clone()).unwrap();
+                                        File::open("userdata/".to_string() + &string_id.clone()).unwrap()
+                                    }
+                                };
+
+                                // reads file into buffer
+                                let mut encoded: Vec<u8> = Vec::new();
+                                file.read_to_end(&mut encoded)?;
+
+                                // deserializes userdata from file
+                                let userdata: UserData = match bincode::deserialize(&encoded) {
+                                    Ok(userdata) => userdata,
+                                    Err(e) => {
+                                        println!("> failed to deserialize userdata from user: {}", string_id);
+                                        println!("> {}", e);
+                                        UserData { messages: Vec::new() }
+                                    }
+                                };
+
+                                // cycles trough every message from user and sends it to client
+                                for i in 0..userdata.messages.len() {
+                                    // writes message
+                                    stream.write(&string_to_buffer(userdata.messages[i].value.clone()))?;
+
+                                    // writes sender id
+                                    stream.write(&string_to_buffer(userdata.messages[i].id.clone()))?;
+                                }
+                                // all messages were sent
+                                stream.write(&vec_to_buffer(&vec![2, 2, 2, 2, 2, 2, 2, 2]))?;
+
+                            },
+                            Err(_) => {
+                                println!("> invalid token");
+                                stream.write(&vec_to_buffer(&vec![1, 1, 1, 1, 1, 1, 1, 1]))?;
+                            }
+                        }
                     }
                     _ => (),
                 };

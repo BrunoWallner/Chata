@@ -9,14 +9,10 @@ use crate::Socket;
 
 static PORT: u32 = 8080;
 
-/*
-pub fn connect(ip: String) -> TcpStream {
-    match TcpStream::connect(ip + ":" + &PORT.to_string()) {
-        Ok(mut stream) => stream,
-        Err(_) => println!("Could not connect to host"),
-    }
+pub struct Message {
+    pub value: String,
+    pub id: String,
 }
-*/
 
 pub fn login(socket: &mut Socket, name: String, password: String) -> Result<Vec<u8>, String> {
     let mut stream = &socket.stream;
@@ -44,13 +40,54 @@ pub fn login(socket: &mut Socket, name: String, password: String) -> Result<Vec<
 
 pub fn send_message(socket: &mut Socket, message: String, id: String, token: &Vec<u8>) -> Result<(), String> {
     let mut stream = &socket.stream;
+    let mut buffer = [0u8; 256];
 
     stream.write(&[0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]).unwrap();
     stream.write(&vec_to_buffer(token)).unwrap();
+
     stream.write(&string_to_buffer(message)).unwrap();
     stream.write(&string_to_buffer(id)).unwrap();
 
     Ok(())
+}
+
+pub fn recieve_messages(socket: &mut Socket, token: &Vec<u8>) -> Result<Vec<Message>, ()> {
+    println!("message revieve request");
+    let mut stream = &socket.stream;
+    let mut messages: Vec<Message> = Vec::new();
+    let mut buffer = [0u8; 256];
+
+    stream.write(&[0x04 ,0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]).unwrap();
+    stream.write(&vec_to_buffer(token)).unwrap();
+
+    loop {
+        // recieves message
+        stream.read_exact(&mut buffer).unwrap();
+        let buf = &buffer[1..buffer[0] as usize + 1];
+
+        // breaks loop if final message was sent 
+        if buf == [2, 2, 2, 2, 2, 2, 2, 2] {break}
+
+        let message = match std::str::from_utf8(buf) {
+            Ok(message) => message,
+            Err(_) => "[INVALID]",
+        };
+        //recieves sender id
+        let mut buffer = [0u8; 256];
+        stream.read_exact(&mut buffer).unwrap();
+        let buf = &buffer[1..buffer[0] as usize + 1];
+
+        // breaks loop if final message was sent 
+        if buf == [2, 2, 2, 2, 2, 2, 2, 2] {break}
+
+        let sender_id = match std::str::from_utf8(buf) {
+            Ok(message) => message,
+            Err(_) => "[INVALID]",
+        };
+        messages.push(Message{value: message.to_string(), id: sender_id.to_string()});
+    }
+
+    Ok(messages)
 }
 
 fn string_to_buffer(string: String) -> [u8; 256] {
