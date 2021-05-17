@@ -1,21 +1,26 @@
+use std::net::Shutdown;
 use std::net::TcpListener;
 use std::net::TcpStream;
-use std::net::Shutdown;
 
 use std::thread;
 
-use sha2::{Sha512, Digest};
+use sha2::{Digest, Sha512};
 
 use std::fs::File;
 use std::io::{Read, Write};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use rand::prelude::*;
+
+use std::sync::mpsc;
 
 mod client;
 mod functions;
 use functions::*;
+
+mod input;
+mod queue;
 
 // 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 => Login request
 // 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 => Signup request
@@ -39,49 +44,48 @@ pub struct UserData {
     messages: Vec<Message>,
 }
 
+#[derive(Deserialize)]
+pub struct Config {
+    connection: Connection
+}
+
+#[derive(Deserialize)]
+pub struct Connection {
+    ip: String,
+    port: u16,
+}
 
 fn main() -> std::io::Result<()> {
     {
-        //
+        // imports config
+        let config_str = std::fs::read_to_string("config.toml").unwrap();
+        let config: Config = toml::from_str(&config_str).unwrap();
+
+        let (event_sender, event_receiver) = mpsc::channel();
+
+        // spawns thread for handling input
+        input::handle(event_sender.clone());
+
+        // spawns thread for handling events
+        queue::init(event_receiver, event_sender.clone());
+
+        use std::time::Duration;
+
+        let mut events: Vec<String> = Vec::new();
+        print_header("Server Init".to_string(), 40);
+
         let mut file = File::open("data.bin")?;
         let mut encoded: Vec<u8> = Vec::new();
         file.read_to_end(&mut encoded)?;
-    
-        let mut accounts: Vec<Account> = bincode::deserialize(&encoded).unwrap();
-        //accounts.push(create_account("Luca3".to_string(), "4498".to_string(), "1_3_5_6".to_string()));
-        
-        // prints all Users at server startup
-        println!("┌──────────────────────────────────────┐");
-        println!("│         List of all accounts         │");
-        println!("├──────────────────────────────────────┤");
-        for i in 0..accounts.len() {
-            //let row = (i + 1).to_string() + ": " + &accounts[i].id[0..(36-4)];
-            let mut row = String::new();
-            if accounts[i].id.clone().len() < 34 {
-                row = (i + 1).to_string() + ": " + &accounts[i].id;
-            } else {
-                row = (i + 1).to_string() + ": " + &accounts[i].id[0..34];
-            }
-            print!("│ {}", row);
-            for _ in 0..(37) - row.len() {
-                print!(" ");
-            }
-            print!("│\n");
-        }
-        print!("└──────────────────────────────────────┘");
-        print!("\n\n");
 
-        /*
-        let mut accounts: Vec<Account> = Vec::new();
-        accounts.push(create_account("Luca".to_string(), "3260".to_string(), "BrunoWallner".to_string()));
-        */
-    
+        let mut accounts: Vec<Account> = bincode::deserialize(&encoded).unwrap();
+
         // generates tokens
         for account in accounts.iter_mut() {
             let mut token: Vec<u8> = Vec::new();
             let mut rng = thread_rng();
             for _ in 0..255 {
-                token.push(rng.gen_range(0 .. 255));
+                token.push(rng.gen_range(0..255));
             }
             account.token = token;
         }
@@ -93,29 +97,36 @@ fn main() -> std::io::Result<()> {
             Ok(..) => (),
             Err(e) => println!("{}", e),
         };
+        events.push("updated authentification tokens".to_string());
 
-        println!("> updated auth tokens");
+        let address = config.connection.ip + ":" + &config.connection.port.to_string();
+        let listener = match TcpListener::bind(&address) {
+            Ok(listener) => listener,
+            Err(e) => {
+                events.push(format!("could not bind server to address {}\n> [{}]", &address, e));
+                std::process::exit(1);
+            }
+        };
+        events.push(format!("server listens on: {}", listener.local_addr().unwrap()));
+        print_body(events, 40);
 
+        print_users(&accounts, 40);
 
-        let listener = TcpListener::bind("127.0.0.1:8080")?;
-        println!("> server listens on: {}", listener.local_addr().unwrap());
-        print!("\n");
         for s in listener.incoming() {
+            let client_event_sender = event_sender.clone();
             thread::spawn(move || -> std::io::Result<()> {
                 let stream = s.unwrap();
-                print_addr(stream.peer_addr()?);
-                println!("> connected");
+
+                print_header("new connection".to_string(), 40);
+                print_body(vec![format!("from: {}", stream.peer_addr().unwrap().to_string())], 40);
 
                 let mut file = File::open("data.bin")?;
                 let mut encoded: Vec<u8> = Vec::new();
                 file.read_to_end(&mut encoded)?;
-            
+
                 let mut accounts: Vec<Account> = bincode::deserialize(&encoded).unwrap();
 
-                println!("> read data from file");
-                print!("\n");
-
-                client::handle(stream, &mut accounts)?;
+                client::handle(stream, &mut accounts, client_event_sender)?;
 
                 // writes accounts back to file
                 let serialized: Vec<u8> = bincode::serialize(&accounts.clone()).unwrap();
@@ -125,13 +136,9 @@ fn main() -> std::io::Result<()> {
                     Ok(..) => (),
                     Err(e) => println!("{}", e),
                 };
-
-                //println!("{:#?}", accounts[0]);
-
                 Ok(())
             });
         }
-
     } // the socket is closed here
     Ok(())
 }

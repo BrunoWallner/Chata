@@ -37,7 +37,6 @@ pub fn login(socket: &mut Socket, name: String, password: String) -> Result<Vec<
     }
 }
 
-
 pub fn send_message(socket: &mut Socket, message: String, id: String, token: &Vec<u8>) -> Result<(), String> {
     let mut stream = &socket.stream;
     let mut buffer = [0u8; 256];
@@ -52,7 +51,6 @@ pub fn send_message(socket: &mut Socket, message: String, id: String, token: &Ve
 }
 
 pub fn recieve_messages(socket: &mut Socket, token: &Vec<u8>) -> Result<Vec<Message>, ()> {
-    println!("message revieve request");
     let mut stream = &socket.stream;
     let mut messages: Vec<Message> = Vec::new();
     let mut buffer = [0u8; 256];

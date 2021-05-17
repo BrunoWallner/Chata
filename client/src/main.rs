@@ -11,7 +11,7 @@ use std::net::TcpStream;
 mod backend;
 mod style;
 
-static IP: &'static str = "localhost:8080";
+static IP: &'static str = "localhost:33333";
 
 pub fn main() -> iced::Result {
     Chat::run(Settings {
