@@ -44,9 +44,11 @@ pub struct UserData {
     messages: Vec<Message>,
 }
 
+// Config
 #[derive(Deserialize)]
 pub struct Config {
-    connection: Connection
+    connection: Connection,
+    queue: Queue,
 }
 
 #[derive(Deserialize)]
@@ -55,24 +57,39 @@ pub struct Connection {
     port: u16,
 }
 
+#[derive(Deserialize)]
+pub struct Queue {
+    queue_poll_cooldown: u64,
+    event_execution_cooldown: u64,
+}
+
 fn main() -> std::io::Result<()> {
     {
+        // clears the screen
+        print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
+        std::io::stdout().flush().unwrap();
+
         // imports config
         let config_str = std::fs::read_to_string("config.toml").unwrap();
         let config: Config = toml::from_str(&config_str).unwrap();
 
         let (event_sender, event_receiver) = mpsc::channel();
 
-        // spawns thread for handling input
-        input::handle(event_sender.clone());
-
-        // spawns thread for handling events
-        queue::init(event_receiver, event_sender.clone());
-
-        use std::time::Duration;
-
         let mut events: Vec<String> = Vec::new();
         print_header("Server Init".to_string(), 40);
+        let now = std::time::Instant::now();
+
+        // spawns thread for handling input
+        input::handle(event_sender.clone());
+        events.push("initiated input-handler".to_string());
+
+        // spawns thread for handling events
+        queue::init(event_receiver, event_sender.clone(), config.queue.queue_poll_cooldown, config.queue.event_execution_cooldown);
+        events.push("initiated event-handler".to_string());
+        events.push("".to_string());
+        events.push(format!("queue_poll_cooldown: {} ms", config.queue.queue_poll_cooldown));
+        events.push(format!("event_execution_cooldown: {} ms", config.queue.event_execution_cooldown));
+        events.push("".to_string());
 
         let mut file = File::open("data.bin")?;
         let mut encoded: Vec<u8> = Vec::new();
@@ -103,11 +120,21 @@ fn main() -> std::io::Result<()> {
         let listener = match TcpListener::bind(&address) {
             Ok(listener) => listener,
             Err(e) => {
-                events.push(format!("could not bind server to address {}\n> [{}]", &address, e));
+                events.push(format!(
+                    "could not bind server to address {}\n> [{}]",
+                    &address, e
+                ));
                 std::process::exit(1);
             }
         };
-        events.push(format!("server listens on: {}", listener.local_addr().unwrap()));
+        events.push(format!(
+            "server listens on: {}",
+            listener.local_addr().unwrap()
+        ));
+        events.push(format!(
+            "started in: {:#?} milliseconds",
+            now.elapsed().as_millis()
+        ));
         print_body(events, 40);
 
         print_users(&accounts, 40);
@@ -118,7 +145,10 @@ fn main() -> std::io::Result<()> {
                 let stream = s.unwrap();
 
                 print_header("new connection".to_string(), 40);
-                print_body(vec![format!("from: {}", stream.peer_addr().unwrap().to_string())], 40);
+                print_body(
+                    vec![format!("from: {}", stream.peer_addr().unwrap().to_string())],
+                    40,
+                );
 
                 let mut file = File::open("data.bin")?;
                 let mut encoded: Vec<u8> = Vec::new();
@@ -128,14 +158,6 @@ fn main() -> std::io::Result<()> {
 
                 client::handle(stream, &mut accounts, client_event_sender)?;
 
-                // writes accounts back to file
-                let serialized: Vec<u8> = bincode::serialize(&accounts.clone()).unwrap();
-
-                let mut file = File::create("data.bin")?;
-                match file.write_all(&serialized) {
-                    Ok(..) => (),
-                    Err(e) => println!("{}", e),
-                };
                 Ok(())
             });
         }

@@ -31,39 +31,28 @@ pub fn check_login(accounts: &Vec<Account>, name: &[u8], passwd: &[u8]) -> Resul
 
 pub fn print_header(string: String, width: usize) {
     print!("┌");
-    for i in 0..width {
+    for _ in 0..width {
         print!("─");
     }
     print!("┐");
     print!("\n");
 
     print!("│");
-    if string.len() % 2 == 0 {
-        for _ in 0..width / 2 - string.len() / 2 {
-            print!(" ");
-        }
-        print!("{}", string);
-        for _ in 0..width / 2 - string.len() / 2 {
-            print!(" ");
-        }
-    } else {
-        for _ in 0..width / 2 - 1 - string.len() / 2 {
-            print!(" ");
-        }
-        print!("{}", string);
-        for _ in 0..width / 2 - string.len() / 2 {
-            print!(" ");
-        }
+    for _ in 0..width / 2 - string.len() / 2 {
+        print!(" ");
+    }
+    print!("{}", string);
+    for _ in 0..width - ((width / 2 - string.len() / 2) + string.len()) {
+        print!(" ");
     }
     print!("│\n");
 
     print!("├");
-    for i in 0..width {
+    for _ in 0..width {
         print!("─");
     }
     print!("┤");
     print!("\n");
-
 }
 use std::iter::FromIterator;
 pub fn print_body(strings: Vec<String>, width: usize) {
@@ -83,7 +72,7 @@ pub fn print_body(strings: Vec<String>, width: usize) {
         print!("│\n");
     }
     print!("└");
-    for i in 0..width {
+    for _ in 0..width {
         print!("─");
     }
     print!("┘");

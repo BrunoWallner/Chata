@@ -1,6 +1,10 @@
 use crate::*;
 
-pub fn handle(mut stream: TcpStream, accounts: &mut Vec<Account>, sender: mpsc::Sender<queue::Event>) -> std::io::Result<()> {
+pub fn handle(
+    mut stream: TcpStream,
+    accounts: &mut Vec<Account>,
+    sender: mpsc::Sender<queue::Event>,
+) -> std::io::Result<()> {
     let addr = stream.peer_addr().unwrap();
     'keepalive: loop {
         let mut buffer = [0; 8]; // 8 Byte Buffer
@@ -45,13 +49,34 @@ pub fn handle(mut stream: TcpStream, accounts: &mut Vec<Account>, sender: mpsc::
                         print_body(events, 40);
                     }
                     // signup
-                    [0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00] => {}
+                    [0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00] => {
+                        print_header("signup request".to_string(), 40);
+                        let mut messages: Vec<String> = Vec::new();
+                        messages.push(format!("from: {}", addr));
+
+                        let mut buffer = [0; 256];
+                        stream.read_exact(&mut buffer)?;
+                        let name = std::str::from_utf8(&buffer[1..buffer[0] as usize + 1]).unwrap().to_string();
+
+                        let mut buffer = [0; 256];
+                        stream.read_exact(&mut buffer)?;
+                        let passwd = std::str::from_utf8(&buffer[1..buffer[0] as usize + 1]).unwrap().to_string();
+
+                        let mut buffer = [0; 256];
+                        stream.read_exact(&mut buffer)?;
+                        let id = std::str::from_utf8(&buffer[1..buffer[0] as usize + 1]).unwrap().to_string();
+
+                        sender.send(queue::Event::CreateUser([name, passwd, id])).unwrap();
+                        messages.push(format!("sent signup event"));
+                        print_body(messages, 40);
+                    }
                     // chat message push request
                     [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00] => {
                         print_header("message push request".to_string(), 40);
                         let mut events: Vec<String> = Vec::new();
                         let token: &[u8];
                         let message: String;
+                        let sender_id: String;
 
                         events.push(format!("from: {}", addr));
 
@@ -79,14 +104,23 @@ pub fn handle(mut stream: TcpStream, accounts: &mut Vec<Account>, sender: mpsc::
                                 events.push(format!("invalid token"));
                                 let string_id = std::str::from_utf8(&id).unwrap().to_string();
 
-                                match search_by_id(accounts, string_id.clone()) {
+                                match search_by_id(accounts, string_id.clone().to_string()) {
                                     Ok(_) => {
                                         events.push(format!("found user with id"));
 
-                                        write_message(string_id, message, accounts[send_account_number].id.clone());
+                                        //write_message(string_id, message, accounts[send_account_number].id.clone());
+                                        sender_id = accounts[send_account_number].id.clone();
+                                        sender
+                                            .send(queue::Event::MessageSent([
+                                                string_id, message, sender_id,
+                                            ]))
+                                            .unwrap();
                                     }
                                     Err(_) => {
-                                        events.push(format!("could not find user with id"));
+                                        events.push(format!(
+                                            "could not find user with id: {}",
+                                            string_id.clone()
+                                        ));
                                     }
                                 }
                             }
@@ -98,7 +132,7 @@ pub fn handle(mut stream: TcpStream, accounts: &mut Vec<Account>, sender: mpsc::
                     }
                     // message pull request
                     [0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00] => {
-                        print_header("message pull request".to_string(), 40);
+                        print_header("message pull request ".to_string(), 40);
                         let mut events: Vec<String> = Vec::new();
 
                         let mut buffer = [0u8; 256];
@@ -120,7 +154,8 @@ pub fn handle(mut stream: TcpStream, accounts: &mut Vec<Account>, sender: mpsc::
                                         file
                                     }
                                     Err(_) => {
-                                        events.push(format!("could not open file, created new one"));
+                                        events
+                                            .push(format!("could not open file, created new one"));
                                         File::create("userdata/".to_string() + &string_id.clone())
                                             .unwrap();
                                         File::open("userdata/".to_string() + &string_id.clone())
@@ -136,7 +171,10 @@ pub fn handle(mut stream: TcpStream, accounts: &mut Vec<Account>, sender: mpsc::
                                 let userdata: UserData = match bincode::deserialize(&encoded) {
                                     Ok(userdata) => userdata,
                                     Err(e) => {
-                                        events.push(format!("failed to deserialize user data from {}", string_id));
+                                        events.push(format!(
+                                            "failed to deserialize user data from {}",
+                                            string_id
+                                        ));
                                         events.push(format!("[{}]", e));
                                         UserData {
                                             messages: Vec::new(),
@@ -166,9 +204,7 @@ pub fn handle(mut stream: TcpStream, accounts: &mut Vec<Account>, sender: mpsc::
                         }
                         print_body(events, 40);
                     }
-                    _ => {
-                        break 'keepalive
-                    }
+                    _ => break 'keepalive,
                 };
             }
             Err(e) => {
@@ -180,63 +216,15 @@ pub fn handle(mut stream: TcpStream, accounts: &mut Vec<Account>, sender: mpsc::
         //print!("\n");
     }
     match stream.shutdown(Shutdown::Both) {
-        Ok(_) => println!("> closed connection to client"),
-        Err(e) => println!("> failed to close connection to client:\n> [{}]", e),
+        Ok(_) => {
+            print_header("closed connection to client".to_string(), 35);
+            print_body(vec!["operation successfull".to_string()], 35);
+        },
+        Err(e) => {
+            print_header(format!("failed to close connection to client"), 35);
+            print_body(vec![e.to_string()], 35);
+        }
     };
     print!("\n");
     Ok(())
-}
-
-pub fn write_message(string_id: String, message: String, sender_id: String) {
-    // imports userdata from ./userdata/[USERID]
-    let mut file = match File::open(
-        "userdata/".to_string() + &string_id.clone(),
-    ) {
-        Ok(file) => {
-            file
-        }
-        Err(_) => {
-            File::create(
-                "userdata/".to_string() + &string_id.clone(),
-            )
-            .unwrap();
-            File::open(
-                "userdata/".to_string() + &string_id.clone(),
-            )
-            .unwrap()
-        }
-    };
-    let mut encoded: Vec<u8> = Vec::new();
-    file.read_to_end(&mut encoded).unwrap();
-
-    let mut userdata: UserData = match bincode::deserialize(
-        &encoded,
-    ) {
-        Ok(userdata) => userdata,
-        Err(e) => {
-            println!("> failed to deserialize userdata from user: {}", string_id);
-            println!("> {}", e);
-            UserData {
-                messages: Vec::new(),
-            }
-        }
-    };
-
-    // pushes final message
-    userdata.messages.push(Message {
-        value: message,
-        id: sender_id,
-    });
-
-    // saves userdata back to file
-    let serialized: Vec<u8> =
-        bincode::serialize(&userdata.clone()).unwrap();
-
-    let mut file = File::create(
-        "userdata/".to_string() + &string_id.clone(),
-    ).unwrap();
-    match file.write_all(&serialized) {
-        Ok(..) => println!("> wrote changes back to file"),
-        Err(e) => println!("{}", e),
-    };
 }
