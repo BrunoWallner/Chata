@@ -124,6 +124,23 @@ pub fn create_account(name: String, password: String, id: String) -> Account {
     }
 }
 
+pub fn get_accounts() -> Vec<Account> {
+    let mut file = match File::open("data.bin") {
+        Ok(f) => f,
+        Err(_) => return Vec::new(),
+    };
+    let mut encoded: Vec<u8> = Vec::new();
+    match file.read_to_end(&mut encoded) {
+        Ok(_) => (),
+        Err(_) => return Vec::new(),
+    };
+
+    match bincode::deserialize(&encoded) {
+        Ok(a) => a,
+        Err(_) => Vec::new(),
+    }
+}
+
 pub fn search_by_id(accounts: &Vec<Account>, id: String) -> Result<usize, ()> {
     for i in 0..accounts.len() {
         if id == accounts[i].id {

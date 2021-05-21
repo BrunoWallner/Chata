@@ -56,17 +56,25 @@ pub fn handle(
 
                         let mut buffer = [0; 256];
                         stream.read_exact(&mut buffer)?;
-                        let name = std::str::from_utf8(&buffer[1..buffer[0] as usize + 1]).unwrap().to_string();
+                        let name = std::str::from_utf8(&buffer[1..buffer[0] as usize + 1])
+                            .unwrap()
+                            .to_string();
 
                         let mut buffer = [0; 256];
                         stream.read_exact(&mut buffer)?;
-                        let passwd = std::str::from_utf8(&buffer[1..buffer[0] as usize + 1]).unwrap().to_string();
+                        let passwd = std::str::from_utf8(&buffer[1..buffer[0] as usize + 1])
+                            .unwrap()
+                            .to_string();
 
                         let mut buffer = [0; 256];
                         stream.read_exact(&mut buffer)?;
-                        let id = std::str::from_utf8(&buffer[1..buffer[0] as usize + 1]).unwrap().to_string();
+                        let id = std::str::from_utf8(&buffer[1..buffer[0] as usize + 1])
+                            .unwrap()
+                            .to_string();
 
-                        sender.send(queue::Event::CreateUser([name, passwd, id])).unwrap();
+                        sender
+                            .send(queue::Event::CreateUser([name, passwd, id]))
+                            .unwrap();
                         messages.push(format!("sent signup event"));
                         print_body(messages, 40);
                     }
@@ -111,7 +119,7 @@ pub fn handle(
                                         //write_message(string_id, message, accounts[send_account_number].id.clone());
                                         sender_id = accounts[send_account_number].id.clone();
                                         sender
-                                            .send(queue::Event::MessageSent([
+                                            .send(queue::Event::SendMessage([
                                                 string_id, message, sender_id,
                                             ]))
                                             .unwrap();
@@ -219,7 +227,7 @@ pub fn handle(
         Ok(_) => {
             print_header("closed connection to client".to_string(), 35);
             print_body(vec!["operation successfull".to_string()], 35);
-        },
+        }
         Err(e) => {
             print_header(format!("failed to close connection to client"), 35);
             print_body(vec![e.to_string()], 35);

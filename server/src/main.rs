@@ -84,18 +84,26 @@ fn main() -> std::io::Result<()> {
         events.push("initiated input-handler".to_string());
 
         // spawns thread for handling events
-        queue::init(event_receiver, event_sender.clone(), config.queue.queue_poll_cooldown, config.queue.event_execution_cooldown);
+        queue::init(
+            event_receiver,
+            event_sender.clone(),
+            config.queue.queue_poll_cooldown,
+            config.queue.event_execution_cooldown,
+        );
+
         events.push("initiated event-handler".to_string());
         events.push("".to_string());
-        events.push(format!("queue_poll_cooldown: {} ms", config.queue.queue_poll_cooldown));
-        events.push(format!("event_execution_cooldown: {} ms", config.queue.event_execution_cooldown));
+        events.push(format!(
+            "queue_poll_cooldown: {} ms",
+            config.queue.queue_poll_cooldown
+        ));
+        events.push(format!(
+            "event_execution_cooldown: {} ms",
+            config.queue.event_execution_cooldown
+        ));
         events.push("".to_string());
 
-        let mut file = File::open("data.bin")?;
-        let mut encoded: Vec<u8> = Vec::new();
-        file.read_to_end(&mut encoded)?;
-
-        let mut accounts: Vec<Account> = bincode::deserialize(&encoded).unwrap();
+        let mut accounts = get_accounts();
 
         // generates tokens
         for account in accounts.iter_mut() {
@@ -150,11 +158,7 @@ fn main() -> std::io::Result<()> {
                     40,
                 );
 
-                let mut file = File::open("data.bin")?;
-                let mut encoded: Vec<u8> = Vec::new();
-                file.read_to_end(&mut encoded)?;
-
-                let mut accounts: Vec<Account> = bincode::deserialize(&encoded).unwrap();
+                    let mut accounts = get_accounts();
 
                 client::handle(stream, &mut accounts, client_event_sender)?;
 

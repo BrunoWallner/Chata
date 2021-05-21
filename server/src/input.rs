@@ -5,13 +5,15 @@ use crate::*;
 pub fn handle(sender: mpsc::Sender<queue::Event>) {
     thread::spawn(move || loop {
         let input = input();
-        let parameter: Vec<&str> = input.split(" ").collect();
+        let parameter: Vec<&str> = input.split(".").collect();
         match parameter[0] {
             "" => (),
             "clear" => {
-                print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
+                //print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
+                //print!("\x1B[2J\x1B[1;1H");
+                print!("{esc}c", esc = 27 as char);
                 std::io::stdout().flush().unwrap();
-            },
+            }
             "exit" => std::process::exit(0),
             "print" => {
                 if parameter.len() > 1 {
@@ -20,10 +22,9 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
                             let mut file = File::open("data.bin").unwrap();
                             let mut encoded: Vec<u8> = Vec::new();
                             file.read_to_end(&mut encoded).unwrap();
-        
                             let accounts: Vec<Account> = bincode::deserialize(&encoded).unwrap();
                             print_users(&accounts, 40);
-                        },
+                        }
                         _ => println!("> invalid parameter"),
                     }
                 } else {
@@ -42,7 +43,7 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
                                 println!("> invalid parameter");
                             }
                         }
-                        _ => (),
+                        _ => println!("> invalid parameter"),
                     }
                 } else {
                     println!("> invalid parameter");
@@ -57,7 +58,35 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
                                 let passwd: String = parameter[3].to_string();
                                 let id: String = parameter[4].to_string();
 
-                                sender.send(queue::Event::CreateUser([name, passwd, id])).unwrap();
+                                sender
+                                    .send(queue::Event::CreateUser([name, passwd, id]))
+                                    .unwrap();
+                                println!("> sent usercreaton event");
+                            } else {
+                                println!("> invalid parameter");
+                            }
+                        }
+                        _ => (),
+                    }
+                } else {
+                    println!("> invalid parameter");
+                }
+            }
+            "write" => {
+                if parameter.len() > 1 {
+                    match parameter[1] {
+                        "message" => {
+                            if parameter.len() > 2 {
+                                let id: String = parameter[2].to_string();
+                                let message: String = parameter[3].to_string();
+
+                                sender
+                                    .send(queue::Event::SendMessage([
+                                        id,
+                                        message,
+                                        "[CONSOLE]".to_string(),
+                                    ]))
+                                    .unwrap();
                                 println!("> sent usercreaton event");
                             } else {
                                 println!("> invalid parameter");
