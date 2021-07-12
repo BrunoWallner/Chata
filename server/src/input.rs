@@ -5,7 +5,7 @@ use crate::*;
 pub fn handle(sender: mpsc::Sender<queue::Event>) {
     thread::spawn(move || loop {
         let input = input();
-        let parameter: Vec<&str> = input.split(".").collect();
+        let parameter: Vec<&str> = input.split("::").collect();
         match parameter[0] {
             "" => (),
             "clear" => {

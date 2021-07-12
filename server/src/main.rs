@@ -21,6 +21,7 @@ use functions::*;
 
 mod input;
 mod queue;
+mod auth;
 
 // 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 => Login request
 // 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 => Signup request
@@ -74,6 +75,7 @@ fn main() -> std::io::Result<()> {
         let config: Config = toml::from_str(&config_str).unwrap();
 
         let (event_sender, event_receiver) = mpsc::channel();
+        let (auth_sender, aut_receiver) = mpsc::channel();
 
         let mut events: Vec<String> = Vec::new();
         print_header("Server Init".to_string(), 40);
@@ -83,10 +85,17 @@ fn main() -> std::io::Result<()> {
         input::handle(event_sender.clone());
         events.push("initiated input-handler".to_string());
 
+        auth::init(
+            auth_sender.clone(),
+            aut_receiver
+        );
+        events.push(String::from("initiated auth-handler"));
+
         // spawns thread for handling events
         queue::init(
             event_receiver,
             event_sender.clone(),
+            auth_sender.clone(),
             config.queue.queue_poll_cooldown,
             config.queue.event_execution_cooldown,
         );
@@ -103,7 +112,7 @@ fn main() -> std::io::Result<()> {
         ));
         events.push("".to_string());
 
-        let mut accounts = get_accounts();
+        let mut accounts = get_accounts(auth_sender.clone());
 
         // generates tokens
         for account in accounts.iter_mut() {
@@ -149,6 +158,7 @@ fn main() -> std::io::Result<()> {
 
         for s in listener.incoming() {
             let client_event_sender = event_sender.clone();
+            let client_auth_sender = auth_sender.clone();
             thread::spawn(move || -> std::io::Result<()> {
                 let stream = s.unwrap();
 
@@ -158,7 +168,7 @@ fn main() -> std::io::Result<()> {
                     40,
                 );
 
-                    let mut accounts = get_accounts();
+                    let mut accounts = get_accounts(client_auth_sender);
 
                 client::handle(stream, &mut accounts, client_event_sender)?;
 

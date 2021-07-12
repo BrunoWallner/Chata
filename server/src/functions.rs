@@ -124,6 +124,7 @@ pub fn create_account(name: String, password: String, id: String) -> Account {
     }
 }
 
+/*
 pub fn get_accounts() -> Vec<Account> {
     let mut file = match File::open("data.bin") {
         Ok(f) => f,
@@ -139,6 +140,18 @@ pub fn get_accounts() -> Vec<Account> {
         Ok(a) => a,
         Err(_) => Vec::new(),
     }
+}
+*/
+
+pub fn get_accounts(tx: mpsc::Sender<(mpsc::Sender<auth::Event>, auth::Event)>) -> Vec<Account> {
+    let (auth_sender, auth_receiver) = mpsc::channel();
+    tx.send((auth_sender, auth::Event::RequestAccountData())).unwrap();
+    let response = auth_receiver.recv().unwrap();
+    match response {
+        auth::Event::ReceiveAccountData(data) => return data,
+        _ => (),
+    }
+    return Vec::new()
 }
 
 pub fn search_by_id(accounts: &Vec<Account>, id: String) -> Result<usize, ()> {

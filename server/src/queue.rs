@@ -17,6 +17,7 @@ pub struct Queue {
 pub fn init(
     receiver: mpsc::Receiver<Event>,
     sender: mpsc::Sender<Event>,
+    auth_sender: mpsc::Sender<(mpsc::Sender<auth::Event>, auth::Event)>,
     queue_poll_time: u64,
     event_cooldown: u64,
 ) {
@@ -42,6 +43,7 @@ pub fn init(
         execute(
             queue_receiver,
             cloned_sender,
+            auth_sender,
             queue_poll_time,
             event_cooldown,
         );
@@ -51,6 +53,7 @@ pub fn init(
 fn execute(
     receiver: mpsc::Receiver<Queue>,
     sender: mpsc::Sender<Event>,
+    auth_sender: mpsc::Sender<(mpsc::Sender<auth::Event>, auth::Event)>,
     queue_poll_time: u64,
     event_cooldown: u64,
 ) {
@@ -89,7 +92,7 @@ fn execute(
                     let name = data[0].clone();
                     let passwd = data[1].clone();
                     let id = data[2].clone();
-                    match create_user(name, passwd, id) {
+                    match create_user(name, passwd, id, auth_sender.clone()) {
                         Ok(_) => messages.push("operation successfull".to_string()),
                         Err(e) => messages.push(format!("error: {}", e)),
                     }
@@ -140,8 +143,8 @@ fn delete_user(user: String) -> Result<(), String> {
     Ok(())
 }
 
-fn create_user(name: String, password: String, id: String) -> Result<(), String> {
-    let mut accounts = get_accounts();
+fn create_user(name: String, password: String, id: String, auth_sender: mpsc::Sender<(mpsc::Sender<auth::Event>, auth::Event)>) -> Result<(), String> {
+    let mut accounts = get_accounts(auth_sender);
     let account = functions::create_account(name, password, id);
 
     if !does_user_already_exist(&accounts, &account) {
