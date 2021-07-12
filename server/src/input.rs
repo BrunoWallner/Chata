@@ -16,13 +16,10 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
             }
             "exit" => std::process::exit(0),
             "print" => {
-                if parameter.len() > 1 {
+                if parameter.len() >= 1 {
                     match parameter[1] {
                         "users" => {
-                            let mut file = File::open("data.bin").unwrap();
-                            let mut encoded: Vec<u8> = Vec::new();
-                            file.read_to_end(&mut encoded).unwrap();
-                            let accounts: Vec<Account> = bincode::deserialize(&encoded).unwrap();
+                            let accounts = functions::get_accounts(sender.clone());
                             print_users(&accounts, 40);
                         }
                         _ => println!("> invalid parameter"),
@@ -31,10 +28,10 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
                     println!("> invalid parameter");
                 }
             }
-            "delete" => {
-                if parameter.len() > 1 {
+            "users" => {
+                if parameter.len() >= 1 {
                     match parameter[1] {
-                        "user" => {
+                        "delete" => {
                             if parameter.len() > 2 {
                                 let user: String = parameter[2].to_string();
                                 sender.send(queue::Event::DeleteUser(user)).unwrap();
@@ -43,17 +40,8 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
                                 println!("> invalid parameter");
                             }
                         }
-                        _ => println!("> invalid parameter"),
-                    }
-                } else {
-                    println!("> invalid parameter");
-                }
-            }
-            "create" => {
-                if parameter.len() > 1 {
-                    match parameter[1] {
-                        "user" => {
-                            if parameter.len() > 3 {
+                        "create" => {
+                            if parameter.len() > 4 {
                                 let name: String = parameter[2].to_string();
                                 let passwd: String = parameter[3].to_string();
                                 let id: String = parameter[4].to_string();
@@ -66,17 +54,8 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
                                 println!("> invalid parameter");
                             }
                         }
-                        _ => (),
-                    }
-                } else {
-                    println!("> invalid parameter");
-                }
-            }
-            "write" => {
-                if parameter.len() > 1 {
-                    match parameter[1] {
-                        "message" => {
-                            if parameter.len() > 2 {
+                        "write" => {
+                            if parameter.len() > 3 {
                                 let id: String = parameter[2].to_string();
                                 let message: String = parameter[3].to_string();
 
@@ -87,12 +66,12 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
                                         "[CONSOLE]".to_string(),
                                     ]))
                                     .unwrap();
-                                println!("> sent usercreaton event");
+                                println!("> sent user write event");
                             } else {
                                 println!("> invalid parameter");
                             }
                         }
-                        _ => (),
+                        _ => println!("> invalid parameter"),
                     }
                 } else {
                     println!("> invalid parameter");
