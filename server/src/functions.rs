@@ -124,34 +124,10 @@ pub fn create_account(name: String, password: String, id: String) -> Account {
     }
 }
 
-/*
-pub fn get_accounts() -> Vec<Account> {
-    let mut file = match File::open("data.bin") {
-        Ok(f) => f,
-        Err(_) => return Vec::new(),
-    };
-    let mut encoded: Vec<u8> = Vec::new();
-    match file.read_to_end(&mut encoded) {
-        Ok(_) => (),
-        Err(_) => return Vec::new(),
-    };
-
-    match bincode::deserialize(&encoded) {
-        Ok(a) => a,
-        Err(_) => Vec::new(),
-    }
-}
-*/
-
-pub fn get_accounts(tx: mpsc::Sender<(mpsc::Sender<auth::Event>, auth::Event)>) -> Vec<Account> {
-    let (auth_sender, auth_receiver) = mpsc::channel();
-    tx.send((auth_sender, auth::Event::RequestAccountData())).unwrap();
-    let response = auth_receiver.recv().unwrap();
-    match response {
-        auth::Event::ReceiveAccountData(data) => return data,
-        _ => (),
-    }
-    return Vec::new()
+pub fn get_accounts(tx: mpsc::Sender<queue::Event>) -> Vec<Account> {
+    let (acc_sender, acc_receiver) = mpsc::channel();
+    tx.send(queue::Event::RequestAccountData(acc_sender)).unwrap();
+    acc_receiver.recv().unwrap()
 }
 
 pub fn search_by_id(accounts: &Vec<Account>, id: String) -> Result<usize, ()> {

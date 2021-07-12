@@ -21,7 +21,6 @@ use functions::*;
 
 mod input;
 mod queue;
-mod auth;
 
 // 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 => Login request
 // 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 => Signup request
@@ -60,8 +59,9 @@ pub struct Connection {
 
 #[derive(Deserialize)]
 pub struct Queue {
-    queue_poll_cooldown: u64,
+    poll_cooldown: u64,
     event_execution_cooldown: u64,
+    account_save_cooldown: u64,
 }
 
 fn main() -> std::io::Result<()> {
@@ -75,44 +75,40 @@ fn main() -> std::io::Result<()> {
         let config: Config = toml::from_str(&config_str).unwrap();
 
         let (event_sender, event_receiver) = mpsc::channel();
-        let (auth_sender, aut_receiver) = mpsc::channel();
 
         let mut events: Vec<String> = Vec::new();
-        print_header("Server Init".to_string(), 40);
         let now = std::time::Instant::now();
 
         // spawns thread for handling input
         input::handle(event_sender.clone());
         events.push("initiated input-handler".to_string());
 
-        auth::init(
-            auth_sender.clone(),
-            aut_receiver
-        );
-        events.push(String::from("initiated auth-handler"));
-
         // spawns thread for handling events
         queue::init(
             event_receiver,
             event_sender.clone(),
-            auth_sender.clone(),
-            config.queue.queue_poll_cooldown,
+            config.queue.poll_cooldown,
             config.queue.event_execution_cooldown,
+            config.queue.account_save_cooldown,
         );
 
         events.push("initiated event-handler".to_string());
         events.push("".to_string());
         events.push(format!(
             "queue_poll_cooldown: {} ms",
-            config.queue.queue_poll_cooldown
+            config.queue.poll_cooldown
         ));
         events.push(format!(
             "event_execution_cooldown: {} ms",
             config.queue.event_execution_cooldown
         ));
+         events.push(format!(
+            "account_save_cooldown: {} ms",
+            config.queue.account_save_cooldown
+        ));
         events.push("".to_string());
 
-        let mut accounts = get_accounts(auth_sender.clone());
+        let mut accounts = get_accounts(event_sender.clone());
 
         // generates tokens
         for account in accounts.iter_mut() {
@@ -152,13 +148,13 @@ fn main() -> std::io::Result<()> {
             "started in: {:#?} milliseconds",
             now.elapsed().as_millis()
         ));
+        print_header("Server Init".to_string(), 40);
         print_body(events, 40);
 
         print_users(&accounts, 40);
 
         for s in listener.incoming() {
             let client_event_sender = event_sender.clone();
-            let client_auth_sender = auth_sender.clone();
             thread::spawn(move || -> std::io::Result<()> {
                 let stream = s.unwrap();
 
@@ -168,7 +164,7 @@ fn main() -> std::io::Result<()> {
                     40,
                 );
 
-                    let mut accounts = get_accounts(client_auth_sender);
+                    let mut accounts = get_accounts(client_event_sender.clone());
 
                 client::handle(stream, &mut accounts, client_event_sender)?;
 

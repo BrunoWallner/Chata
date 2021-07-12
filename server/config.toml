@@ -3,5 +3,6 @@ ip = "0.0.0.0"
 port = 33333
 
 [queue]
-queue_poll_cooldown = 500
+poll_cooldown = 500
 event_execution_cooldown = 0
+account_save_cooldown = 10000

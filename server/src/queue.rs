@@ -1,12 +1,17 @@
 use crate::*;
 use std::sync::mpsc;
 
+use std::time::Duration;
+
 #[derive(Clone, Debug)]
 pub enum Event {
     QueuePullRequest(),
     DeleteUser(String),
     CreateUser([String; 3]),
     SendMessage([String; 3]),
+
+    RequestAccountData(mpsc::Sender<Vec<Account>>),
+    SaveAccountData(),
 }
 
 #[derive(Clone, Debug)]
@@ -17,34 +22,43 @@ pub struct Queue {
 pub fn init(
     receiver: mpsc::Receiver<Event>,
     sender: mpsc::Sender<Event>,
-    auth_sender: mpsc::Sender<(mpsc::Sender<auth::Event>, auth::Event)>,
-    queue_poll_time: u64,
+    poll_time: u64,
     event_cooldown: u64,
+    account_save_cooldown: u64,
 ) {
     let (queue_sender, queue_receiver) = mpsc::channel();
 
+    // thread that listenes on incoming eventrequests
     thread::spawn(move || {
     	let mut queue: Queue = Queue { events: Vec::new() };
-	loop {
-            let event: Event = receiver.recv().unwrap();
-            match event {
-                Event::QueuePullRequest() => {
-                    queue_sender.send(queue.clone()).unwrap();
-                    queue.events.clear();
-                }
-                _ => {
-                    queue.events.push(event.clone());
+        loop {
+                let event: Event = receiver.recv().unwrap();
+                match event {
+                    Event::QueuePullRequest() => {
+                        queue_sender.send(queue.clone()).unwrap();
+                        queue.events.clear();
+                    }
+                    _ => {
+                        queue.events.push(event.clone());
+                    }
                 }
             }
+    });
+    // thread that sends Event to save Accountdata to disk
+    let cloned_sender = sender.clone();
+    thread::spawn(move || {
+        loop {
+            cloned_sender.send(Event::SaveAccountData()).unwrap();
+            thread::sleep(Duration::from_millis(account_save_cooldown));
         }
     });
+    // thread that pulls all events every n milliseconds and executes them in queue
     let cloned_sender = sender.clone();
     thread::spawn(move || {
         execute(
             queue_receiver,
             cloned_sender,
-            auth_sender,
-            queue_poll_time,
+            poll_time,
             event_cooldown,
         );
     });
@@ -53,18 +67,15 @@ pub fn init(
 fn execute(
     receiver: mpsc::Receiver<Queue>,
     sender: mpsc::Sender<Event>,
-    auth_sender: mpsc::Sender<(mpsc::Sender<auth::Event>, auth::Event)>,
-    queue_poll_time: u64,
+    poll_time: u64,
     event_cooldown: u64,
 ) {
+    let mut accounts: Vec<Account> = get_account_data();
     loop {
+        //let mut accounts = accounts.clone();
         sender.send(Event::QueuePullRequest()).unwrap();
         let queue: Queue = receiver.recv().unwrap();
-        if queue.events.len() > 0 {
-            functions::print_header("async event execution".to_string(), 40)
-        }
-        let mut messages: Vec<String> = Vec::new();
-        let now = std::time::Instant::now();
+
         for event in queue.events.iter() {
             match event {
                 Event::SendMessage(value) => {
@@ -73,86 +84,43 @@ fn execute(
                         value[1].to_string(),
                         value[2].to_string(),
                     ) {
-                        Ok(_) => messages.push("executed message send event".to_string()),
+                        Ok(_) => (),
                         Err(e) => {
-                            messages.push("failed to execute message send event".to_string());
-                            messages.push(format!("error: {}", e));
+                            println!("failed to execute message send event\n[{}]", e);
                         }
                     };
                 }
                 Event::DeleteUser(user) => {
-                    messages.push(format!("deleting user: {}", user));
-                    match delete_user(user.to_string()) {
-                        Ok(_) => messages.push("operation successfull".to_string()),
-                        Err(e) => messages.push(format!("error: {}", e)),
+                    match delete_user(&mut accounts, user.to_string()) {
+                        Ok(_) => (),
+                        Err(e) => println!("failed to delete user\n[{}]", e),
                     };
                 }
                 Event::CreateUser(data) => {
-                    messages.push(format!("creating user: {}", data[2]));
                     let name = data[0].clone();
                     let passwd = data[1].clone();
                     let id = data[2].clone();
-                    match create_user(name, passwd, id, auth_sender.clone()) {
-                        Ok(_) => messages.push("operation successfull".to_string()),
-                        Err(e) => messages.push(format!("error: {}", e)),
+                    match create_user(&mut accounts, name, passwd, id) {
+                        Ok(_) => (),
+                        Err(e) => println!("failed to create user\n[{}]", e),
                     }
+                }
+                Event::RequestAccountData(sender) => {
+                    let accounts_clone = accounts.clone();
+                    sender.send(accounts_clone).unwrap();
+                },
+                Event::SaveAccountData() => {
+                    save_account_data(accounts.clone()).unwrap();
                 }
                 _ => (),
             }
             thread::sleep(std::time::Duration::from_millis(event_cooldown));
         }
-        messages.push(format!("execution time: {} ms", now.elapsed().as_millis()));
-        if queue.events.len() > 0 {
-            print_body(messages, 40)
-        }
-        thread::sleep(std::time::Duration::from_millis(queue_poll_time));
+        thread::sleep(std::time::Duration::from_millis(poll_time));
     }
 }
 
-fn delete_user(user: String) -> Result<(), String> {
-    // deletes user from ./userdata/
-    match std::fs::remove_file("userdata/".to_string() + &user) {
-        Ok(_) => (),
-        Err(_) => (),
-    };
-
-    // deletes user from data.bin
-    let mut file = match File::open("data.bin") {
-        Ok(file) => file,
-        Err(_) => return Err("could not open data.bin".to_string()),
-    };
-    let mut encoded: Vec<u8> = Vec::new();
-    file.read_to_end(&mut encoded).unwrap();
-
-    let mut accounts: Vec<Account> = match bincode::deserialize(&encoded) {
-        Ok(accounts) => accounts,
-        Err(_) => return Err("failed to deserialize data.bin".to_string()),
-    };
-
-    for i in 0..accounts.len() {
-        if accounts[i].id == user {
-            accounts.remove(i);
-            break;
-        }
-    }
-
-    let mut file = File::create("data.bin").unwrap();
-    let serialized = bincode::serialize(&accounts).unwrap();
-    file.write_all(&serialized).unwrap();
-
-    Ok(())
-}
-
-fn create_user(name: String, password: String, id: String, auth_sender: mpsc::Sender<(mpsc::Sender<auth::Event>, auth::Event)>) -> Result<(), String> {
-    let mut accounts = get_accounts(auth_sender);
-    let account = functions::create_account(name, password, id);
-
-    if !does_user_already_exist(&accounts, &account) {
-        accounts.push(account)
-    } else {
-        return Err("user already exist".to_string());
-    }
-
+fn save_account_data(accounts: Vec<Account>) -> Result<(), String> {
     // saves accounts back to data.bin
     let mut file = match File::create("data.bin") {
         Ok(file) => file,
@@ -164,6 +132,28 @@ fn create_user(name: String, password: String, id: String, auth_sender: mpsc::Se
         Err(_) => return Err("failed to serialize account data".to_string()),
     };
     file.write_all(&serialized).unwrap();
+
+    Ok(())
+}
+
+fn delete_user(accounts: &mut Vec<Account>, user: String) -> Result<(), String> {
+    for i in 0..accounts.len() {
+        if accounts[i].id == user {
+            accounts.remove(i);
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn create_user(accounts: &mut Vec<Account>, name: String, password: String, id: String) -> Result<(), String> {
+    let account = functions::create_account(name, password, id);
+
+    if !does_user_already_exist(&accounts, &account) {
+        accounts.push(account);
+    } else {
+        return Err("user already exist".to_string());
+    }
 
     Ok(())
 }
@@ -230,4 +220,21 @@ pub fn write_message(string_id: String, message: String, sender_id: String) -> R
     };
 
     Ok(())
+}
+
+fn get_account_data() -> Vec<Account> {
+    let mut file = match File::open("data.bin") {
+        Ok(f) => f,
+        Err(_) => return Vec::new(),
+    };
+    let mut encoded: Vec<u8> = Vec::new();
+    match file.read_to_end(&mut encoded) {
+        Ok(_) => (),
+        Err(_) => return Vec::new(),
+    };
+
+    match bincode::deserialize(&encoded) {
+        Ok(a) => a,
+        Err(_) => Vec::new(),
+    }
 }
