@@ -3,15 +3,21 @@ use std::sync::mpsc;
 
 use std::time::Duration;
 
+use crate::console::*;
+
 #[derive(Clone, Debug)]
 pub enum Event {
-    QueuePullRequest(),
     DeleteUser(String),
     CreateUser([String; 3]),
     SendMessage([String; 3]),
 
+    ServerShutdown(),
+
     RequestAccountData(mpsc::Sender<Vec<Account>>),
-    SaveAccountData(),
+    SaveAuthData(),
+    SaveUserData(),
+
+    RequestUserData( (mpsc::Sender<Result<user::UserData, ()>>, String) ),
 }
 
 #[derive(Clone, Debug)]
@@ -22,204 +28,105 @@ pub struct Queue {
 pub fn init(
     receiver: mpsc::Receiver<Event>,
     sender: mpsc::Sender<Event>,
-    poll_time: u64,
-    event_cooldown: u64,
-    account_save_cooldown: u64,
+    auth_save_cooldown: u64,
+    user_save_cooldown: u64,
 ) {
-    let (queue_sender, queue_receiver) = mpsc::channel();
-
-    // thread that listenes on incoming eventrequests
-    thread::spawn(move || {
-    	let mut queue: Queue = Queue { events: Vec::new() };
-        loop {
-                let event: Event = receiver.recv().unwrap();
-                match event {
-                    Event::QueuePullRequest() => {
-                        queue_sender.send(queue.clone()).unwrap();
-                        queue.events.clear();
-                    }
-                    _ => {
-                        queue.events.push(event.clone());
-                    }
-                }
-            }
-    });
     // thread that sends Event to save Accountdata to disk
     let cloned_sender = sender.clone();
     thread::spawn(move || {
         loop {
-            cloned_sender.send(Event::SaveAccountData()).unwrap();
-            thread::sleep(Duration::from_millis(account_save_cooldown));
+            cloned_sender.send(Event::SaveAuthData()).unwrap();
+            thread::sleep(Duration::from_millis(auth_save_cooldown));
         }
     });
-    // thread that pulls all events every n milliseconds and executes them in queue
     let cloned_sender = sender.clone();
     thread::spawn(move || {
+        loop {
+            cloned_sender.send(Event::SaveUserData()).unwrap();
+            thread::sleep(Duration::from_millis(user_save_cooldown));
+        }
+    });
+
+    // thread that receives and executes events
+    thread::spawn(move || {
         execute(
-            queue_receiver,
-            cloned_sender,
-            poll_time,
-            event_cooldown,
+            receiver,
         );
     });
 }
 
 fn execute(
-    receiver: mpsc::Receiver<Queue>,
-    sender: mpsc::Sender<Event>,
-    poll_time: u64,
-    event_cooldown: u64,
+    receiver: mpsc::Receiver<Event>,
 ) {
     let mut accounts: Vec<Account> = get_account_data();
-    loop {
-        //let mut accounts = accounts.clone();
-        sender.send(Event::QueuePullRequest()).unwrap();
-        let queue: Queue = receiver.recv().unwrap();
+    let mut userdata: Vec<user::UserData> = user::get_all();
 
-        for event in queue.events.iter() {
-            match event {
-                Event::SendMessage(value) => {
-                    match write_message(
-                        value[0].to_string(),
-                        value[1].to_string(),
-                        value[2].to_string(),
-                    ) {
-                        Ok(_) => (),
-                        Err(e) => {
-                            println!("failed to execute message send event\n[{}]", e);
-                        }
-                    };
+    loop {
+        let event: Event = receiver.recv().unwrap();
+
+        match event {
+            Event::SendMessage(value) => {
+                match user::write_message(
+                    value[0].to_string(),
+                    value[1].to_string(),
+                    value[2].to_string(),
+                    &mut userdata,
+                ) {
+                    Ok(_) => print(State::Information(String::from("executed message send event"))),
+                    Err(e) => {
+                        print(State::Error(format!("failed to execute message send event [{}]", e)));
+                    }
+                };
+            }
+            Event::DeleteUser(user) => {
+                match user::delete_user(&mut accounts, user.to_string()) {
+                    Ok(_) => print(State::Information(String::from("executed user deletion event"))),
+                    Err(e) => print(State::Error(format!("failed to delete user [{}]", e))),
+                };
+            }
+            Event::CreateUser(data) => {
+                let name = data[0].clone();
+                let passwd = data[1].clone();
+                let id = data[2].clone();
+                match user::create_user(&mut accounts, name, passwd, id) {
+                    Ok(_) =>  print(State::Information(String::from("executed user creation event"))),
+                    Err(e) => print(State::Error(format!("failed to create user [{}]", e))),
                 }
-                Event::DeleteUser(user) => {
-                    match delete_user(&mut accounts, user.to_string()) {
-                        Ok(_) => (),
-                        Err(e) => println!("failed to delete user\n[{}]", e),
-                    };
-                }
-                Event::CreateUser(data) => {
-                    let name = data[0].clone();
-                    let passwd = data[1].clone();
-                    let id = data[2].clone();
-                    match create_user(&mut accounts, name, passwd, id) {
-                        Ok(_) => (),
-                        Err(e) => println!("failed to create user\n[{}]", e),
+            }
+            Event::RequestAccountData(sender) => {
+                let accounts_clone = accounts.clone();
+                sender.send(accounts_clone).unwrap();
+            },
+            Event::SaveAuthData() => {
+                user::save_auth_data(accounts.clone()).unwrap();
+                print(State::Information(String::from("saved authentification to data.bin")));
+            },
+            Event::SaveUserData() => {
+                user::save_user_data(&mut userdata.clone()).ok();
+                print(State::Information(String::from("saving userdata")));
+            },
+            Event::RequestUserData( (sender, id) ) => {
+                let mut sent: bool = false;
+                for i in 0..userdata.len() {
+                    if &userdata[i].id == &id {
+                        sender.send(Ok(userdata[i].clone())).ok();
+                        sent = true;
+                        break;
                     }
                 }
-                Event::RequestAccountData(sender) => {
-                    let accounts_clone = accounts.clone();
-                    sender.send(accounts_clone).unwrap();
-                },
-                Event::SaveAccountData() => {
-                    save_account_data(accounts.clone()).unwrap();
-                }
-                _ => (),
-            }
-            thread::sleep(std::time::Duration::from_millis(event_cooldown));
-        }
-        thread::sleep(std::time::Duration::from_millis(poll_time));
-    }
-}
+                if !sent {sender.send(Err(())).unwrap()}
 
-fn save_account_data(accounts: Vec<Account>) -> Result<(), String> {
-    // saves accounts back to data.bin
-    let mut file = match File::create("data.bin") {
-        Ok(file) => file,
-        Err(_) => return Err("failed to create file".to_string()),
-    };
-
-    let serialized = match bincode::serialize(&accounts) {
-        Ok(ser) => ser,
-        Err(_) => return Err("failed to serialize account data".to_string()),
-    };
-    file.write_all(&serialized).unwrap();
-
-    Ok(())
-}
-
-fn delete_user(accounts: &mut Vec<Account>, user: String) -> Result<(), String> {
-    for i in 0..accounts.len() {
-        if accounts[i].id == user {
-            accounts.remove(i);
-            break;
+            },
+            Event::ServerShutdown() => {
+                print(State::Information(String::from("shutting down server...")));
+                user::save_auth_data(accounts.clone()).unwrap();
+                print(State::Information(String::from("saved all hashed authentification information to data.bin")));
+                user::save_user_data(&mut userdata.clone()).unwrap();
+                print(State::Information(String::from("saved userdata")));
+                std::process::exit(0);
+            },
         }
     }
-    Ok(())
-}
-
-fn create_user(accounts: &mut Vec<Account>, name: String, password: String, id: String) -> Result<(), String> {
-    let account = functions::create_account(name, password, id);
-
-    if !does_user_already_exist(&accounts, &account) {
-        accounts.push(account);
-    } else {
-        return Err("user already exist".to_string());
-    }
-
-    Ok(())
-}
-fn does_user_already_exist(
-    accounts: &Vec<Account>,
-    account: &Account,
-) -> bool {
-    for a in accounts.iter() {
-        if a.name == account.name && a.id == account.id {
-            return true;
-        }
-    }
-    false
-}
-
-pub fn write_message(string_id: String, message: String, sender_id: String) -> Result<(), String> {
-    // imports userdata from ./userdata/[USERID]
-    let mut file = match File::open("userdata/".to_string() + &string_id.clone()) {
-        Ok(file) => file,
-        Err(_) => {
-            File::create("userdata/".to_string() + &string_id.clone()).unwrap();
-            File::open("userdata/".to_string() + &string_id.clone()).unwrap()
-        }
-    };
-    let mut encoded: Vec<u8> = Vec::new();
-    file.read_to_end(&mut encoded).unwrap();
-
-    let mut userdata: UserData = match bincode::deserialize(&encoded) {
-        Ok(userdata) => userdata,
-        Err(_) => UserData {
-            messages: Vec::new(),
-        },
-    };
-
-    // pushes final message
-    userdata.messages.push(Message {
-        value: message,
-        id: sender_id,
-    });
-
-    // saves userdata back to file
-    let serialized: Vec<u8> = match bincode::serialize(&userdata.clone()) {
-        Ok(ser) => ser,
-        Err(_) => return Err("failed to deserialize userdata".to_string()),
-    };
-
-    let mut file = match File::create("userdata/".to_string() + &string_id.clone()) {
-        Ok(file) => file,
-        Err(_) => {
-            return Err(format!(
-                "failed to create file: ./userdata/{}",
-                string_id.clone()
-            ))
-        }
-    };
-    match file.write_all(&serialized) {
-        Ok(_) => (),
-        Err(_) => {
-            return Err(format!(
-                "failed to write userdata to: ./userdata/{}",
-                string_id.clone()
-            ))
-        }
-    };
-
-    Ok(())
 }
 
 fn get_account_data() -> Vec<Account> {

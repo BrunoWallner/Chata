@@ -119,48 +119,27 @@ pub fn handle(
                                 // imports userdata from ./userdata/[USERID]
                                 let string_id = &accounts[account_number].id.clone();
 
-                                let mut file = match File::open(
-                                    "userdata/".to_string() + &string_id.clone(),
-                                ) {
-                                    Ok(file) => {
-                                        file
-                                    }
-                                    Err(_) => {
-                                        File::create("userdata/".to_string() + &string_id.clone())
-                                            .unwrap();
-                                        File::open("userdata/".to_string() + &string_id.clone())
-                                            .unwrap()
-                                    }
-                                };
+                                match user::request_single(string_id.clone(), sender.clone()) {
+                                    Ok(userdata) => {
+                                        // cycles trough every message from user and sends it to client
+                                        for i in 0..userdata.messages.len() {
+                                            // writes message
+                                            stream.write(&string_to_buffer(
+                                                userdata.messages[i].value.clone(),
+                                            ))?;
 
-                                // reads file into buffer
-                                let mut encoded: Vec<u8> = Vec::new();
-                                file.read_to_end(&mut encoded)?;
-
-                                // deserializes userdata from file
-                                let userdata: UserData = match bincode::deserialize(&encoded) {
-                                    Ok(userdata) => userdata,
-                                    Err(_) => {
-                                        UserData {
-                                            messages: Vec::new(),
+                                            // writes sender id
+                                            stream.write(&string_to_buffer(
+                                                userdata.messages[i].id.clone(),
+                                            ))?;
                                         }
+                                        // all messages were sent
+                                        stream.write(&vec_to_buffer(&vec![2, 2, 2, 2, 2, 2, 2, 2]))?;
+                                    }
+                                    Err(_) => {
+                                        stream.write(&vec_to_buffer(&vec![1, 1, 1, 1, 1, 1, 1, 1]))?;
                                     }
                                 };
-
-                                // cycles trough every message from user and sends it to client
-                                for i in 0..userdata.messages.len() {
-                                    // writes message
-                                    stream.write(&string_to_buffer(
-                                        userdata.messages[i].value.clone(),
-                                    ))?;
-
-                                    // writes sender id
-                                    stream.write(&string_to_buffer(
-                                        userdata.messages[i].id.clone(),
-                                    ))?;
-                                }
-                                // all messages were sent
-                                stream.write(&vec_to_buffer(&vec![2, 2, 2, 2, 2, 2, 2, 2]))?;
                             }
                             Err(_) => {
                                 stream.write(&vec_to_buffer(&vec![1, 1, 1, 1, 1, 1, 1, 1]))?;

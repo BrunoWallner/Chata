@@ -89,7 +89,7 @@ pub fn check_token(accounts: &Vec<Account>, token: &[u8]) -> Result<usize, ()> {
 }
 
 #[allow(dead_code)]
-pub fn create_account(name: String, password: String, id: String) -> Account {
+pub fn create_account(name: String, password: String, id: String) -> Result<Account, String> {
     // creates data for Account
     let mut hashed_name = Sha512::new();
     hashed_name.update(name.as_bytes());
@@ -105,23 +105,30 @@ pub fn create_account(name: String, password: String, id: String) -> Account {
     // creates data and file in ./userdata
     let mut file = match File::create("userdata/".to_string() + &id.to_string()) {
         Ok(file) => file,
-        Err(_) => panic!("failed to create file in ./userdata for user: {}", id),
+        Err(_) => {
+            print(State::CriticalError(format!("failed to create file in ./userdata for user: {}", id)));
+            return Err(String::from("failed to create file"));
+        }
     };
-    let userdata = UserData {
+    let userdata = user::UserData {
+        id: id.clone(),
         messages: Vec::new(),
+        changed: true,
     };
     let serialized = bincode::serialize(&userdata).unwrap();
     match file.write_all(&serialized) {
         Ok(..) => (),
-        Err(e) => println!("{}", e),
+        Err(e) => print(State::CriticalError(format!("failed to save userdate {}", e))),
     };
 
-    Account {
-        name: hashed_name.finalize().to_vec(),
-        password: hashed_password.finalize().to_vec(),
-        token: token,
-        id: id,
-    }
+    Ok(
+        Account {
+            name: hashed_name.finalize().to_vec(),
+            password: hashed_password.finalize().to_vec(),
+            token: token,
+            id: id.clone(),
+        }
+    )
 }
 
 pub fn get_accounts(tx: mpsc::Sender<queue::Event>) -> Vec<Account> {

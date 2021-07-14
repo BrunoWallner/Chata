@@ -21,6 +21,9 @@ use functions::*;
 
 mod input;
 mod queue;
+mod user;
+mod console;
+use console::*;
 
 // 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 => Login request
 // 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 => Signup request
@@ -33,22 +36,11 @@ pub struct Account {
     id: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Message {
-    value: String,
-    id: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct UserData {
-    messages: Vec<Message>,
-}
-
 // Config
 #[derive(Deserialize)]
 pub struct Config {
     connection: Connection,
-    queue: Queue,
+    authentification: Authentification,
 }
 
 #[derive(Deserialize)]
@@ -58,10 +50,9 @@ pub struct Connection {
 }
 
 #[derive(Deserialize)]
-pub struct Queue {
-    poll_cooldown: u64,
-    event_execution_cooldown: u64,
-    account_save_cooldown: u64,
+pub struct Authentification {
+    auth_save_cooldown: u64,
+    user_save_cooldown: u64,
 }
 
 fn main() -> std::io::Result<()> {
@@ -71,42 +62,32 @@ fn main() -> std::io::Result<()> {
         std::io::stdout().flush().unwrap();
 
         // imports config
-        let config_str = std::fs::read_to_string("config.toml").unwrap();
+        let config_str = match std::fs::read_to_string("config.toml") {
+            Ok(config) => config,
+            Err(e) => {
+                println!("could not find config.toml:\n{}", e);
+                std::process::exit(1);
+            }
+        };
         let config: Config = toml::from_str(&config_str).unwrap();
 
         let (event_sender, event_receiver) = mpsc::channel();
 
-        let mut events: Vec<String> = Vec::new();
         let now = std::time::Instant::now();
 
         // spawns thread for handling input
         input::handle(event_sender.clone());
-        events.push("initiated input-handler".to_string());
+        print(State::Information(String::from("initiated input handler")));
 
         // spawns thread for handling events
         queue::init(
             event_receiver,
             event_sender.clone(),
-            config.queue.poll_cooldown,
-            config.queue.event_execution_cooldown,
-            config.queue.account_save_cooldown,
+            config.authentification.auth_save_cooldown,
+            config.authentification.user_save_cooldown,
         );
 
-        events.push("initiated event-handler".to_string());
-        events.push("".to_string());
-        events.push(format!(
-            "queue_poll_cooldown: {} ms",
-            config.queue.poll_cooldown
-        ));
-        events.push(format!(
-            "event_execution_cooldown: {} ms",
-            config.queue.event_execution_cooldown
-        ));
-         events.push(format!(
-            "account_save_cooldown: {} ms",
-            config.queue.account_save_cooldown
-        ));
-        events.push("".to_string());
+        print(State::Information(String::from("initiated event-handler")));
 
         let mut accounts = get_accounts(event_sender.clone());
 
@@ -127,29 +108,27 @@ fn main() -> std::io::Result<()> {
             Ok(..) => (),
             Err(e) => println!("{}", e),
         };
-        events.push("updated authentification tokens".to_string());
+        print(State::Information(String::from("updated authentification tokens")));
 
         let address = config.connection.ip + ":" + &config.connection.port.to_string();
         let listener = match TcpListener::bind(&address) {
             Ok(listener) => listener,
             Err(e) => {
-                events.push(format!(
-                    "could not bind server to address {}\n> [{}]",
+                print(State::CriticalError(format!(
+                    "could not bind server to address {} [{}]",
                     &address, e
-                ));
+                )));
                 std::process::exit(1);
             }
         };
-        events.push(format!(
+        print(State::Information(format!(
             "server listens on: {}",
             listener.local_addr().unwrap()
-        ));
-        events.push(format!(
+        )));
+        print(State::Information(format!(
             "started in: {:#?} milliseconds",
             now.elapsed().as_millis()
-        ));
-        print_header("Server Init".to_string(), 40);
-        print_body(events, 40);
+        )));
 
         print_users(&accounts, 40);
 
@@ -157,14 +136,7 @@ fn main() -> std::io::Result<()> {
             let client_event_sender = event_sender.clone();
             thread::spawn(move || -> std::io::Result<()> {
                 let stream = s.unwrap();
-
-                print_header("new connection".to_string(), 40);
-                print_body(
-                    vec![format!("from: {}", stream.peer_addr().unwrap().to_string())],
-                    40,
-                );
-
-                    let mut accounts = get_accounts(client_event_sender.clone());
+                let mut accounts = get_accounts(client_event_sender.clone());
 
                 client::handle(stream, &mut accounts, client_event_sender)?;
 

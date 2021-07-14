@@ -14,7 +14,7 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
                 print!("{esc}c", esc = 27 as char);
                 std::io::stdout().flush().unwrap();
             }
-            "exit" => std::process::exit(0),
+            "exit" => sender.send(queue::Event::ServerShutdown()).unwrap() ,
             "print" => {
                 if parameter.len() >= 1 {
                     match parameter[1] {
@@ -35,7 +35,6 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
                             if parameter.len() > 2 {
                                 let user: String = parameter[2].to_string();
                                 sender.send(queue::Event::DeleteUser(user)).unwrap();
-                                println!("> sent userdeletion event");
                             } else {
                                 println!("> invalid parameter");
                             }
@@ -49,7 +48,6 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
                                 sender
                                     .send(queue::Event::CreateUser([name, passwd, id]))
                                     .unwrap();
-                                println!("> sent usercreaton event");
                             } else {
                                 println!("> invalid parameter");
                             }
@@ -66,7 +64,16 @@ pub fn handle(sender: mpsc::Sender<queue::Event>) {
                                         "[CONSOLE]".to_string(),
                                     ]))
                                     .unwrap();
-                                println!("> sent user write event");
+                            } else {
+                                println!("> invalid parameter");
+                            }
+                        }
+                        "inspect" => {
+                            if parameter.len() > 2 {
+                                match user::request_single(String::from(parameter[2]), sender.clone()) {
+                                    Ok(user) => println!("{:#?}", user),
+                                    Err(_) => println!("could not find user"),
+                                };
                             } else {
                                 println!("> invalid parameter");
                             }
