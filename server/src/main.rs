@@ -21,9 +21,15 @@ use functions::*;
 
 mod input;
 mod queue;
+
 mod user;
+use user::*;
+
 mod console;
 use console::*;
+
+mod auth;
+use auth::*;
 
 // 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 => Login request
 // 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 => Signup request
@@ -46,6 +52,7 @@ pub struct Config {
 #[derive(Deserialize)]
 pub struct Connection {
     ip: String,
+    ctrl_port: u16,
     port: u16,
 }
 
@@ -76,7 +83,7 @@ fn main() -> std::io::Result<()> {
         let now = std::time::Instant::now();
 
         // spawns thread for handling input
-        input::handle(event_sender.clone());
+        input::init(event_sender.clone(), config.connection.ip.clone(), config.connection.ctrl_port.clone());
         print(State::Information(String::from("initiated input handler")));
 
         // spawns thread for handling events
@@ -129,8 +136,6 @@ fn main() -> std::io::Result<()> {
             "started in: {:#?} milliseconds",
             now.elapsed().as_millis()
         )));
-
-        print_users(&accounts, 40);
 
         for s in listener.incoming() {
             let client_event_sender = event_sender.clone();

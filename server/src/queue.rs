@@ -88,7 +88,7 @@ fn execute(
                 let name = data[0].clone();
                 let passwd = data[1].clone();
                 let id = data[2].clone();
-                match user::create_user(&mut accounts, name, passwd, id) {
+                match user::create_user(&mut accounts, &mut userdata, name, passwd, id) {
                     Ok(_) =>  print(State::Information(String::from("executed user creation event"))),
                     Err(e) => print(State::Error(format!("failed to create user [{}]", e))),
                 }
@@ -98,12 +98,16 @@ fn execute(
                 sender.send(accounts_clone).unwrap();
             },
             Event::SaveAuthData() => {
-                user::save_auth_data(accounts.clone()).unwrap();
-                print(State::Information(String::from("saved authentification to data.bin")));
+                match user::save_auth_data(accounts.clone()) {
+                    Ok(_) => print(State::Information(format!("saved all hashed authentification information to data.bin"))),
+                    Err(e) => print(State::CriticalError(format!("could not save auth data [{}]", e))),
+                }
             },
             Event::SaveUserData() => {
-                user::save_user_data(&mut userdata.clone()).ok();
-                print(State::Information(String::from("saving userdata")));
+                match user::save_user_data(&mut userdata.clone()) {
+                    Ok(a) => print(State::Information(format!("saved userdata for {} user", a))),
+                    Err(e) => print(State::CriticalError(format!("could not save user data [{}]", e))),
+                };
             },
             Event::RequestUserData( (sender, id) ) => {
                 let mut sent: bool = false;
@@ -119,10 +123,15 @@ fn execute(
             },
             Event::ServerShutdown() => {
                 print(State::Information(String::from("shutting down server...")));
-                user::save_auth_data(accounts.clone()).unwrap();
-                print(State::Information(String::from("saved all hashed authentification information to data.bin")));
-                user::save_user_data(&mut userdata.clone()).unwrap();
-                print(State::Information(String::from("saved userdata")));
+                match user::save_auth_data(accounts.clone()) {
+                    Ok(_) => print(State::Information(format!("saved all hashed authentification information to data.bin"))),
+                    Err(e) => print(State::CriticalError(format!("could not save auth data [{}]", e))),
+                }
+
+                match user::save_user_data(&mut userdata.clone()) {
+                    Ok(a) => print(State::Information(format!("saved userdata for {} user", a))),
+                    Err(e) => print(State::CriticalError(format!("could not save user data [{}]", e))),
+                };
                 std::process::exit(0);
             },
         }

@@ -30,9 +30,11 @@ pub fn save_auth_data(accounts: Vec<Account>) -> Result<(), String> {
     Ok(())
 }
 
-pub fn save_user_data(users: &mut Vec<UserData>) -> Result<(), String> {
+pub fn save_user_data(users: &mut Vec<UserData>) -> Result<u64, String> {
+    let mut total_save: u64 = 0;
     for user in users.iter_mut() {
         if user.changed {
+            total_save += 1;
             user.changed = false;
 
             match File::create("./userdata/".to_string() + &String::from(user.id.clone())) {
@@ -40,43 +42,50 @@ pub fn save_user_data(users: &mut Vec<UserData>) -> Result<(), String> {
                     match bincode::serialize(&user) {
                         Ok(serialized) => {
                             match file.write_all(&serialized) {
-                                Ok(..) => print(State::Information(format!("saved userdata for user: {}", user.id))),
-                                Err(e) => print(State::CriticalError(format!("failed to save userdata in ./userdata for user: {}", user.id))),
+                                Ok(..) => (),
+                                Err(e) => return Err(format!("failed to save userdata in ./userdata for user: {}", user.id)),
                             };
                         },
-                        Err(e) => print(State::CriticalError(format!("failed to deserialize userdata for user: {} {}", user.id, e))),
+                        Err(e) => return Err(format!("failed to deserialize userdata for user: {} {}", user.id, e)),
                     };
                 },
-                Err(e) => print(State::CriticalError(format!("failed to open file in ./userdata for user: {} {}", user.id, e))),
+                Err(e) => return Err(format!("failed to open file in ./userdata for user: {} {}", user.id, e)),
             };
         }
     }
-    Ok(())
+    Ok(total_save)
 }
 
 pub fn delete_user(accounts: &mut Vec<Account>, user: String) -> Result<(), String> {
     for i in 0..accounts.len() {
         if accounts[i].id == user {
-            match fs::remove_file("./userdata".to_string() + &accounts[i].id) {
+            let id = accounts[i].id.clone();
+            accounts.remove(i);
+            match fs::remove_file("./userdata/".to_string() + &id.clone()) {
                 // it is completely irrelevant
                 Ok(_) => (),
-                Err(_) => (),
+                Err(e) => return Err(format!("could not delete userdata for user {} [{}]", id.clone(), e)),
             };
-            accounts.remove(i);
             return Ok(())
         }
     }
     Err(String::from("could not find user"))
 }
 
-pub fn create_user(accounts: &mut Vec<Account>, name: String, password: String, id: String) -> Result<(), String> {
-    if name.contains("__") || id.contains("::") {
+pub fn create_user(accounts: &mut Vec<Account>, userdata: &mut Vec<UserData>, name: String, password: String, id: String) -> Result<(), String> {
+    if name.contains("::") || id.contains("::") {
         return Err(String::from("invalid username"));
     }
-    let account = match functions::create_account(name, password, id) {
+    let account = match create_account(name, password, id.clone()) {
         Ok(acc) => acc,
         Err(e) => return Err(e),
     };
+
+    userdata.push(UserData{
+        id: id.clone(),
+        messages: Vec::new(),
+        changed: true,
+    });
 
     if !does_user_already_exist(&accounts, &account) {
         accounts.push(account);
@@ -91,7 +100,7 @@ pub fn does_user_already_exist(
     account: &Account,
 ) -> bool {
     for a in accounts.iter() {
-        if a.name == account.name && a.id == account.id {
+        if a.id == account.id {
             return true;
         }
     }
@@ -111,6 +120,63 @@ pub fn write_message(string_id: String, message: String, sender_id: String, user
         }
     }
     Err(String::from("could not find user"))
+}
+
+#[allow(dead_code)]
+pub fn create_account(name: String, password: String, id: String) -> Result<Account, String> {
+    // creates data for Account
+    let mut hashed_name = Sha512::new();
+    hashed_name.update(name.as_bytes());
+
+    let mut hashed_password = Sha512::new();
+    hashed_password.update(password.as_bytes());
+
+    let mut token: Vec<u8> = Vec::new();
+    for _ in 0..255 {
+        token.push(thread_rng().gen_range(0..255))
+    }
+
+    // creates data and file in ./userdata
+    let mut file = match File::create("userdata/".to_string() + &id.to_string()) {
+        Ok(file) => file,
+        Err(_) => {
+            return Err(format!("failed to create file in ./userdata for user: {}", id));
+        }
+    };
+    let userdata = user::UserData {
+        id: id.clone(),
+        messages: Vec::new(),
+        changed: true,
+    };
+    let serialized = bincode::serialize(&userdata).unwrap();
+    match file.write_all(&serialized) {
+        Ok(..) => (),
+        Err(e) => return Err(format!("failed to save userdate {}", e)),
+    };
+
+    Ok(
+        Account {
+            name: hashed_name.finalize().to_vec(),
+            password: hashed_password.finalize().to_vec(),
+            token: token,
+            id: id.clone(),
+        }
+    )
+}
+
+pub fn get_accounts(tx: mpsc::Sender<queue::Event>) -> Vec<Account> {
+    let (acc_sender, acc_receiver) = mpsc::channel();
+    tx.send(queue::Event::RequestAccountData(acc_sender)).unwrap();
+    acc_receiver.recv().unwrap()
+}
+
+pub fn search_by_id(accounts: &Vec<Account>, id: String) -> Result<usize, ()> {
+    for i in 0..accounts.len() {
+        if id == accounts[i].id {
+            return Ok(i);
+        }
+    }
+    Err(())
 }
 
 pub fn get_all() -> Vec<UserData> {
@@ -161,43 +227,3 @@ pub fn request_single(id: String, sender: mpsc::Sender<queue::Event>) -> Result<
     };
     Ok(user_data)
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

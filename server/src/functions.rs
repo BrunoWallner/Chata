@@ -12,23 +12,6 @@ pub fn print_users(accounts: &Vec<Account>, width: usize) {
     print_body(users, width);
 }
 
-pub fn check_login(accounts: &Vec<Account>, name: &[u8], passwd: &[u8]) -> Result<usize, ()> {
-    for i in 0..accounts.len() {
-        let mut hashed_name = Sha512::new();
-        hashed_name.update(&name);
-
-        let mut hashed_password = Sha512::new();
-        hashed_password.update(&passwd);
-
-        if *accounts[i].name == *hashed_name.finalize()
-            && *accounts[i].password == *hashed_password.finalize()
-        {
-            return Ok(i);
-        }
-    }
-    return Err(());
-}
-
 pub fn print_header(string: String, width: usize) {
     print!("┌");
     for _ in 0..width {
@@ -77,73 +60,6 @@ pub fn print_body(strings: Vec<String>, width: usize) {
     }
     print!("┘");
     print!("\n");
-}
-
-pub fn check_token(accounts: &Vec<Account>, token: &[u8]) -> Result<usize, ()> {
-    for i in 0..accounts.len() {
-        if accounts[i].token == token {
-            return Ok(i);
-        }
-    }
-    return Err(());
-}
-
-#[allow(dead_code)]
-pub fn create_account(name: String, password: String, id: String) -> Result<Account, String> {
-    // creates data for Account
-    let mut hashed_name = Sha512::new();
-    hashed_name.update(name.as_bytes());
-
-    let mut hashed_password = Sha512::new();
-    hashed_password.update(password.as_bytes());
-
-    let mut token: Vec<u8> = Vec::new();
-    for _ in 0..255 {
-        token.push(thread_rng().gen_range(0..255))
-    }
-
-    // creates data and file in ./userdata
-    let mut file = match File::create("userdata/".to_string() + &id.to_string()) {
-        Ok(file) => file,
-        Err(_) => {
-            print(State::CriticalError(format!("failed to create file in ./userdata for user: {}", id)));
-            return Err(String::from("failed to create file"));
-        }
-    };
-    let userdata = user::UserData {
-        id: id.clone(),
-        messages: Vec::new(),
-        changed: true,
-    };
-    let serialized = bincode::serialize(&userdata).unwrap();
-    match file.write_all(&serialized) {
-        Ok(..) => (),
-        Err(e) => print(State::CriticalError(format!("failed to save userdate {}", e))),
-    };
-
-    Ok(
-        Account {
-            name: hashed_name.finalize().to_vec(),
-            password: hashed_password.finalize().to_vec(),
-            token: token,
-            id: id.clone(),
-        }
-    )
-}
-
-pub fn get_accounts(tx: mpsc::Sender<queue::Event>) -> Vec<Account> {
-    let (acc_sender, acc_receiver) = mpsc::channel();
-    tx.send(queue::Event::RequestAccountData(acc_sender)).unwrap();
-    acc_receiver.recv().unwrap()
-}
-
-pub fn search_by_id(accounts: &Vec<Account>, id: String) -> Result<usize, ()> {
-    for i in 0..accounts.len() {
-        if id == accounts[i].id {
-            return Ok(i);
-        }
-    }
-    Err(())
 }
 
 pub fn string_to_buffer(string: String) -> [u8; 256] {
