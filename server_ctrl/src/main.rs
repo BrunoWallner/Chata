@@ -19,7 +19,7 @@ fn main() {
     let token = &buffer[0..256];
 
     if token[0] == 4 {
-        println!("peer revoked command permission");
+        println!("peer denied command permission");
         std::process::exit(1);
     } else {
         println!("peer granted command permission");
