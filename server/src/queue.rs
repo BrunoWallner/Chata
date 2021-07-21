@@ -104,7 +104,7 @@ fn execute(
                 }
             },
             Event::SaveUserData() => {
-                match user::save_user_data(&mut userdata.clone()) {
+                match user::save_user_data(&mut userdata) {
                     Ok(a) => print(State::Information(format!("saved userdata for {} user", a))),
                     Err(e) => print(State::CriticalError(format!("could not save user data [{}]", e))),
                 };

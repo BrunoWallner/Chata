@@ -30,9 +30,9 @@ pub fn save_auth_data(accounts: Vec<Account>) -> Result<(), String> {
     Ok(())
 }
 
-pub fn save_user_data(users: &mut Vec<UserData>) -> Result<u64, String> {
+pub fn save_user_data(mut users: &mut Vec<UserData>) -> Result<u64, String> {
     let mut total_save: u64 = 0;
-    for user in users.iter_mut() {
+    for mut user in users.iter_mut() {
         if user.changed {
             total_save += 1;
             user.changed = false;

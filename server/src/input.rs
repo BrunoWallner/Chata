@@ -10,49 +10,7 @@ use std::io::{stdout, Write};
 
 use crate::*;
 
-enum KeyReaderEvent {
-    NewKey(char),
-    RequestKey(mpsc::Sender<char>),
-}
-
-pub fn init(sender: mpsc::Sender<queue::Event>, ip: String, port: u16) {
-    /* loop {
-        let key = read_key();
-        match key {
-            Some(c) => println!("{}", c),
-            None => (),
-        };
-    } */
-    let (key_sender, key_receiver) = mpsc::channel();
-    // key reader
-    let key_sender_clone = key_sender.clone();
-    thread::spawn(move || {
-        loop {
-            match read().unwrap() {
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char(c),
-                    ..
-                }) => key_sender_clone.send(KeyReaderEvent::NewKey(c)).unwrap(),
-                _ => (),
-            }
-        }
-    });
-
-    // keyevent thread
-    thread::spawn(move || {
-        let mut key: char  = '\0';
-
-        loop {
-            match key_receiver.recv().unwrap() {
-                KeyReaderEvent::NewKey(c) => key = c,
-                KeyReaderEvent::RequestKey(sender) => {
-                    sender.send(key).unwrap();
-                }
-            }
-        }
-    });
-
-    let key_sender_clone = key_sender.clone();
+pub fn init(sender: mpsc::Sender<queue::Event>, ip: String, port: u16, password_length: u8) {
     thread::spawn(move || {
         let address = ip + ":" + &port.to_string();
         let listener = match TcpListener::bind(&address) {
@@ -67,11 +25,10 @@ pub fn init(sender: mpsc::Sender<queue::Event>, ip: String, port: u16) {
         };
         for s in listener.incoming() {
             let sender_clone = sender.clone();
-            let key_sender_clone = key_sender_clone.clone();
             thread::spawn(move || -> std::io::Result<()> {
                 let stream = s.unwrap();
 
-                receive_instructions(stream, sender_clone, key_sender_clone);
+                receive_instructions(stream, sender_clone, password_length);
 
                 Ok(())
             });
@@ -79,34 +36,35 @@ pub fn init(sender: mpsc::Sender<queue::Event>, ip: String, port: u16) {
     });
 }
 
-fn receive_instructions(mut stream: TcpStream, sender: mpsc::Sender<queue::Event>, key_sender: mpsc::Sender<KeyReaderEvent>) -> std::io::Result<()> {
+fn receive_instructions(mut stream: TcpStream, sender: mpsc::Sender<queue::Event>, password_length: u8) -> std::io::Result<()> {
     // creates token
     let mut rng = thread_rng();
+    let mut auth_passwd: String = String::new();
     let mut auth_token: &mut [u8; 256] = &mut [0; 256];
     for i in 0..256 {
         auth_token[i] = rng.gen_range(0..255);
     }
+    auth_token[0] = 1;
+    for _ in 0..password_length {
+        auth_passwd.push(rng.gen_range(0..9).to_string().chars().collect::<Vec<char>>()[0]);
+    }
 
-    print(console::State::ImportantInformation(format!("{} requested full command controll, accept? <y/n>", stream.peer_addr().unwrap().to_string().red())));
+    print(console::State::ImportantInformation(format!("{} requested full command controll, password: [{}]", stream.peer_addr().unwrap().to_string().red(), auth_passwd.clone())));
 
-    let (tx, rc) = mpsc::channel();
-
-    key_sender.send(KeyReaderEvent::RequestKey(tx)).unwrap();
-
-    let key = rc.recv().unwrap();
-    println!("got {}", key);
-
-    match key.to_string().as_str() {
-        "y" | "Y" => {
-            print(console::State::ImportantInformation(format!("granted {} full command access", stream.peer_addr().unwrap().to_string().red())));
-            stream.write(auth_token).ok();
-        },
-        "n" | "N" | "" => {
-            print(console::State::ImportantInformation(format!("denied {} full command access", stream.peer_addr().unwrap().to_string().red())));
-            stream.write(&vec_to_buffer(&vec![0, 0, 0, 0])).ok();
-        },
-        _ => (),
+    let mut buffer = [0u8; 256];
+    stream.read_exact(&mut buffer).unwrap();
+    let mut input_passwd = match std::str::from_utf8(&buffer[1..buffer[0] as usize + 1]) {
+        Ok(v) => v,
+        Err(e) => "[INVALID UTF8 ENCODING]"
     };
+
+    if input_passwd == auth_passwd {
+        print(console::State::ImportantInformation(format!("granted {} full command access", stream.peer_addr().unwrap().to_string().red())));
+        stream.write(auth_token).ok();
+    } else {
+        print(console::State::ImportantInformation(format!("denied {} full command access", stream.peer_addr().unwrap().to_string().red())));
+        stream.write(&vec_to_buffer(&vec![0, 0, 0, 0])).ok();
+    }
 
     'keepalive: loop {
         let mut buffer = [0; 8]; // 8 Byte Buffer
@@ -134,6 +92,7 @@ fn receive_instructions(mut stream: TcpStream, sender: mpsc::Sender<queue::Event
                             };
                         } else {
                             print(console::State::CriticalError(format!("{}: invalid command token", stream.peer_addr().unwrap())));
+                            break 'keepalive;
                         }
                     },
                     _ => break 'keepalive,
@@ -164,11 +123,19 @@ fn handle(sender: mpsc::Sender<queue::Event>, instruction: String, mut stream: T
             if parameter.len() >= 1 {
                 match parameter[1] {
                     "users" => {
+                        stream.write(&string_to_buffer(String::from("print::users"))).unwrap();
                         let accounts = get_accounts(sender.clone());
-                        print_users(&accounts, 40);
-                    }
-                    _ => ()
+                        for account in accounts.iter() {
+                            stream.write(&string_to_buffer(account.id.clone())).unwrap();
+                        }
+                        stream.write(&[0u8; 256]).unwrap();
+                    },
+                    _ => {
+                        stream.write(&[0u8; 256]).unwrap();
+                    },
                 }
+            } else {
+                stream.write(&[0u8; 256]).unwrap();
             }
         }
         "users" => {
@@ -178,6 +145,7 @@ fn handle(sender: mpsc::Sender<queue::Event>, instruction: String, mut stream: T
                         if parameter.len() > 2 {
                             let user: String = parameter[2].to_string();
                             sender.send(queue::Event::DeleteUser(user)).unwrap();
+                            stream.write(&[0u8; 256]).unwrap();
                         }
                     }
                     "create" => {
@@ -189,6 +157,8 @@ fn handle(sender: mpsc::Sender<queue::Event>, instruction: String, mut stream: T
                             sender
                                 .send(queue::Event::CreateUser([name, passwd, id]))
                                 .unwrap();
+
+                            stream.write(&[0u8; 256]).unwrap();
                         }
                     }
                     "write" => {
@@ -203,28 +173,29 @@ fn handle(sender: mpsc::Sender<queue::Event>, instruction: String, mut stream: T
                                     "[CONSOLE]".to_string(),
                                 ]))
                                 .unwrap();
+                            stream.write(&[0u8; 256]).unwrap();
                         }
                     }
-                    "inspect" => {
-                        if parameter.len() > 2 {
-                            match user::request_single(String::from(parameter[2]), sender.clone()) {
-                                Ok(user) => println!("{:#?}", user),
-                                Err(_) => println!("could not find user"),
-                            };
-                        } else {
-                            println!("> invalid parameter");
-                        }
-                    }
-                    _ => println!("> invalid parameter"),
+                    _ => {
+                        stream.write(&[0u8; 256]).unwrap();
+                    },
                 }
+            } else {
+                stream.write(&[0u8; 256]).unwrap();
             }
         }
         "echo" => {
             if parameter.len() > 1 {
                 println!("> {}", parameter[1]);
+                stream.write(&[0u8; 256]).unwrap();
+            } else {
+                stream.write(&[0u8; 256]).unwrap();
             }
         }
-        command => print(console::State::Error(format!("{}: command not found", command))),
+        command => {
+            print(console::State::Error(format!("{}: command not found", command)));
+            stream.write(&[0u8; 256]).unwrap();
+        }
     }
 }
 
@@ -239,17 +210,6 @@ fn input() -> String {
     return input_string.trim().to_string();
 }
 
-fn read_key() -> Option<char> {
-    match read().unwrap() {
-        //i think this speaks for itself
-        Event::Key(KeyEvent {
-            code: KeyCode::Char(c),
-            ..
-            //clearing the screen and printing our message
-        }) => return Some(c),
-        _ => return None,
-    }
-}
 /*
 enum InputTimeoutEvent {
     IsTimeout(mpsc::Sender<bool>),

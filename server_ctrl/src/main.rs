@@ -3,22 +3,30 @@ use std::net::TcpStream;
 
 use std::io::stdin;
 
-static IP: &str = "localhost:10000";
-
 fn main() {
-    let mut stream: TcpStream = match TcpStream::connect(IP) {
+    print!("IP: ");
+    std::io::stdout().flush();
+    let ip = input();
+
+    let mut stream: TcpStream = match TcpStream::connect(ip.as_str()) {
         Ok(stream) => stream,
         Err(_) => {
-            println!("{} refused the connection", IP);
+            println!("{} refused the connection", ip);
             std::process::exit(1);
         }
     };
+
+
+    print!("password: ");
+    std::io::stdout().flush();
+    let passwd = input();
+    stream.write(&string_to_buffer(passwd));
 
     let mut buffer = [0; 256];
     stream.read_exact(&mut buffer).unwrap();
     let token = &buffer[0..256];
 
-    if token[0] == 4 {
+    if token[0] != 1 {
         println!("peer denied command permission");
         std::process::exit(1);
     } else {
@@ -26,11 +34,40 @@ fn main() {
     }
 
     loop {
+        print!("> ");
+        std::io::stdout().flush();
         let input = input();
 
         stream.write(&[1, 1, 1, 1, 1, 1, 1, 1]);
         stream.write(token);
         stream.write(&string_to_buffer(input));
+
+        let mut response: Vec<String> = Vec::new();
+        'receiving: loop {
+            let mut buffer = [0u8; 256];
+            stream.read_exact(&mut buffer).unwrap();
+            println!("got respnse");
+
+            match buffer[0] {
+                0 => {
+                    response.push(String::from(""));
+                    break 'receiving;
+                }
+                _ => {
+                    let string = match std::str::from_utf8(&buffer[1..buffer[0] as usize + 1]) {
+                        Ok(v) => String::from(v),
+                        Err(_) => String::from("[UTF-8 ERROR]"),
+                    };
+                    response.push(string);
+                }
+            }
+        }
+        match response[0].as_str() {
+            "print::users" => {
+                print_users(response[1..].to_vec(), 40);
+            }
+            _ => println!("unreconizable response"),
+        }
     }
 }
 
@@ -63,4 +100,60 @@ pub fn vec_to_buffer(vec: &Vec<u8>) -> [u8; 256] {
     }
 
     buffer
+}
+
+// prints all Users at server startup
+fn print_users(accounts: Vec<String>, width: usize) {
+    print_header("List of all accounts".to_string(), width);
+    print_body(accounts, width);
+}
+
+fn print_header(string: String, width: usize) {
+    print!("┌");
+    for _ in 0..width {
+        print!("─");
+    }
+    print!("┐");
+    print!("\n");
+
+    print!("│");
+    for _ in 0..width / 2 - string.len() / 2 {
+        print!(" ");
+    }
+    print!("{}", string);
+    for _ in 0..width - ((width / 2 - string.len() / 2) + string.len()) {
+        print!(" ");
+    }
+    print!("│\n");
+
+    print!("├");
+    for _ in 0..width {
+        print!("─");
+    }
+    print!("┤");
+    print!("\n");
+}
+use std::iter::FromIterator;
+fn print_body(strings: Vec<String>, width: usize) {
+    for string in strings.iter() {
+        //let row = (i + 1).to_string() + ": " + &accounts[i].id[0..(36-4)];
+        let row: String;
+        if string.chars().count() <= width {
+            row = string.to_string();
+        } else {
+            let char_vec: Vec<char> = string.chars().collect();
+            row = String::from_iter(&char_vec[0..width]);
+        }
+        print!("│{}", row);
+        for _ in 0..width - row.chars().count() {
+            print!(" ");
+        }
+        print!("│\n");
+    }
+    print!("└");
+    for _ in 0..width {
+        print!("─");
+    }
+    print!("┘");
+    print!("\n");
 }

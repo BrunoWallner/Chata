@@ -60,6 +60,7 @@ pub struct Connection {
 pub struct Authentification {
     auth_save_cooldown: u64,
     user_save_cooldown: u64,
+    remote_shell_password_length: u8, // less than 4  = no remote shell
 }
 
 fn main() -> std::io::Result<()> {
@@ -83,8 +84,18 @@ fn main() -> std::io::Result<()> {
         let now = std::time::Instant::now();
 
         // spawns thread for handling input
-        input::init(event_sender.clone(), config.connection.ip.clone(), config.connection.ctrl_port.clone());
-        print(State::Information(String::from("initiated input handler")));
+        let password_length = config.authentification.remote_shell_password_length;
+        if password_length >= 4 {
+            input::init(
+                event_sender.clone(),
+                config.connection.ip.clone(),
+                config.connection.ctrl_port.clone(),
+                password_length,
+            );
+            print(State::Information(String::from("initiated input handler")));
+        } else {
+            print(State::Information(String::from("disabled input handler")));
+        }
 
         // spawns thread for handling events
         queue::init(

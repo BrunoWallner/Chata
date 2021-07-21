@@ -4,5 +4,8 @@ ctrl_port = 10000
 port = 33333
 
 [authentification]
-auth_save_cooldown = 600000
-user_save_cooldown = 600000
+auth_save_cooldown = 60000
+user_save_cooldown = 60000
+
+# shorter than 4 disables shell
+remote_shell_password_length = 4
