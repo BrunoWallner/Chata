@@ -1,5 +1,3 @@
-use crate::*;
-
 pub fn string_to_buffer(string: String) -> [u8; 256] {
     let mut buffer: [u8; 256] = [0; 256];
     buffer[0] = string.len() as u8;

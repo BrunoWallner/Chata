@@ -30,7 +30,7 @@ pub fn save_auth_data(accounts: Vec<Account>) -> Result<(), String> {
     Ok(())
 }
 
-pub fn save_user_data(mut users: &mut Vec<UserData>) -> Result<u64, String> {
+pub fn save_user_data(users: &mut Vec<UserData>) -> Result<u64, String> {
     let mut total_save: u64 = 0;
     for mut user in users.iter_mut() {
         if user.changed {
@@ -43,7 +43,7 @@ pub fn save_user_data(mut users: &mut Vec<UserData>) -> Result<u64, String> {
                         Ok(serialized) => {
                             match file.write_all(&serialized) {
                                 Ok(..) => (),
-                                Err(e) => return Err(format!("failed to save userdata in ./userdata for user: {}", user.id)),
+                                Err(e) => return Err(format!("failed to save userdata in ./userdata for user: {} [{}]", user.id, e)),
                             };
                         },
                         Err(e) => return Err(format!("failed to deserialize userdata for user: {} {}", user.id, e)),

@@ -4,8 +4,12 @@ use std::net::TcpStream;
 use std::io::stdin;
 
 fn main() {
+    print!("name: ");
+    std::io::stdout().flush().ok();
+    let name = input();
+
     print!("IP: ");
-    std::io::stdout().flush();
+    std::io::stdout().flush().ok();
     let ip = input();
 
     let mut stream: TcpStream = match TcpStream::connect(ip.as_str()) {
@@ -16,11 +20,13 @@ fn main() {
         }
     };
 
+    stream.write(&string_to_buffer(String::from(name))).unwrap();
+
 
     print!("password: ");
-    std::io::stdout().flush();
+    std::io::stdout().flush().ok();
     let passwd = input();
-    stream.write(&string_to_buffer(passwd));
+    stream.write(&string_to_buffer(passwd)).unwrap();
 
     let mut buffer = [0; 256];
     stream.read_exact(&mut buffer).unwrap();
@@ -35,22 +41,21 @@ fn main() {
 
     loop {
         print!("> ");
-        std::io::stdout().flush();
+        std::io::stdout().flush().ok();
         let input = input();
 
-        stream.write(&[1, 1, 1, 1, 1, 1, 1, 1]);
-        stream.write(token);
-        stream.write(&string_to_buffer(input));
+        stream.write(&[1, 1, 1, 1, 1, 1, 1, 1]).unwrap();
+        stream.write(token).unwrap();
+        stream.write(&string_to_buffer(input)).unwrap();
 
         let mut response: Vec<String> = Vec::new();
         'receiving: loop {
             let mut buffer = [0u8; 256];
             stream.read_exact(&mut buffer).unwrap();
-            println!("got respnse");
 
             match buffer[0] {
                 0 => {
-                    response.push(String::from(""));
+                    //response.push(String::from(""));
                     break 'receiving;
                 }
                 _ => {
@@ -64,10 +69,22 @@ fn main() {
         }
         match response[0].as_str() {
             "print::users" => {
-                print_users(response[1..].to_vec(), 40);
+                print_users(response[1..response.len() - 1].to_vec(), 40);
             }
-            _ => println!("unreconizable response"),
-        }
+            _ => (),
+        };
+
+        match response[response.len() - 1].as_str() {
+            "INVALID_TOKEN" => {
+                println!("INVALID TOKEN");
+                std::process::exit(1);
+            },
+            "EXIT" => {
+                println!("SERVER SHUTDOWN");
+                std::process::exit(1);
+            },
+            r => println!("{}", r),
+        };
     }
 }
 
