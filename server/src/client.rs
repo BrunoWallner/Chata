@@ -32,6 +32,7 @@ pub fn handle(
                         match check_login(&accounts, name, passwd) {
                             Ok(i) => {
                                 stream.write(&vec_to_buffer(&accounts[i].token))?;
+                                stream.write(&string_to_buffer(accounts[i].id.clone()))?;
                             }
                             Err(_) => {
                                 stream.write(&vec_to_buffer(&vec![0, 0, 0, 0, 0, 0, 0, 0]))?;
@@ -58,9 +59,22 @@ pub fn handle(
                             .unwrap()
                             .to_string();
 
+                        let (tx, rx) = mpsc::channel();
                         sender
-                            .send(queue::Event::CreateUser([name, passwd, id]))
+                            .send(queue::Event::CreateUser((
+                                Some(tx),
+                                [name, passwd, id])
+                            ))
                             .unwrap();
+
+                        match rx.recv().unwrap() {
+                            Ok(token) => {
+                                stream.write(&vec_to_buffer(&token)).unwrap();
+                            },
+                            Err(_) => {
+                                stream.write(&vec_to_buffer(&vec![0x01, 0x01, 0x01, 0x01])).unwrap();
+                            }
+                        }
                     }
                     // chat message push request
                     [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00] => {

@@ -177,12 +177,24 @@ fn handle(sender: mpsc::Sender<queue::Event>, instruction: String, mut stream: T
                             let passwd: String = parameter[3].to_string();
                             let id: String = parameter[4].to_string();
 
-                            sender
-                                .send(queue::Event::CreateUser([name, passwd, id]))
-                                .unwrap();
+                            let (tx, rx) = mpsc::channel();
 
-                            stream.write(&string_to_buffer(String::from("OK"))).unwrap();
-                            stream.write(&[0u8; 256]).unwrap();
+                            sender
+                                .send(queue::Event::CreateUser((
+                                    Some(tx),
+                                    [name, passwd, id]
+                                )))
+                                .unwrap();
+                            match rx.recv().unwrap() {
+                                Ok(_) => {
+                                    stream.write(&string_to_buffer(String::from("OK"))).unwrap();
+                                    stream.write(&[0u8; 256]).unwrap();
+                                },
+                                Err(_) => {
+                                    stream.write(&string_to_buffer(String::from("ACCOUNT_DOES_NOT_MEET_REQUIREMENTS"))).unwrap();
+                                    stream.write(&[0u8; 256]).unwrap();
+                                }
+                            }
                         } else {
                             stream.write(&string_to_buffer(String::from("INVALID_PARAMETER"))).unwrap();
                             stream.write(&[0u8; 256]).unwrap();

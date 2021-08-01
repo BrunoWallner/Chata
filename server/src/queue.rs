@@ -8,7 +8,7 @@ use crate::console::*;
 #[derive(Clone, Debug)]
 pub enum Event {
     DeleteUser(String),
-    CreateUser([String; 3]),
+    CreateUser( (Option<mpsc::Sender<Result<Vec<u8>, ()>>>, [String; 3]) ),
     SendMessage([String; 3]),
 
     ServerShutdown(),
@@ -41,6 +41,7 @@ pub fn init(
     });
     let cloned_sender = sender.clone();
     thread::spawn(move || {
+        thread::sleep(Duration::from_millis(1));
         loop {
             cloned_sender.send(Event::SaveUserData()).unwrap();
             thread::sleep(Duration::from_millis(user_save_cooldown));
@@ -84,13 +85,33 @@ fn execute(
                     Err(e) => print(State::Error(format!("failed to delete user [{}]", e))),
                 };
             }
-            Event::CreateUser(data) => {
+            Event::CreateUser( (sender, data) ) => {
                 let name = data[0].clone();
                 let passwd = data[1].clone();
                 let id = data[2].clone();
-                match user::create_user(&mut accounts, &mut userdata, name, passwd, id) {
-                    Ok(_) =>  print(State::Information(String::from("executed user creation event"))),
-                    Err(e) => print(State::Error(format!("failed to create user [{}]", e))),
+
+                if id.len() >= 4 && id.chars().any(|c| c.is_alphabetic())
+                && passwd.len() >= 4 && name.chars().any(|c| c.is_alphabetic())
+                && name.len() >= 4 && name.chars().any(|c| c.is_alphabetic()) {
+                    match user::create_user(&mut accounts, &mut userdata, name, passwd, id) {
+                        Ok(token) =>  {
+                                print(State::Information(String::from("executed user creation event")));
+                                if sender.is_some() {
+                                    sender.unwrap().send(Ok(token)).unwrap();
+                                }
+                            },
+                        Err(e) => {
+                                print(State::Error(format!("failed to create user [{}]", e)));
+                                if sender.is_some() {
+                                    sender.unwrap().send(Err(())).unwrap();
+                                }
+                            }
+                    }
+                } else {
+                    print(State::Error(format!("failed to create user [account does not meet requirements]")));
+                    if sender.is_some() {
+                        sender.unwrap().send(Err(())).unwrap()
+                    }
                 }
             }
             Event::RequestAccountData(sender) => {

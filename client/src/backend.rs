@@ -21,7 +21,7 @@ pub fn login(socket: &mut Socket, name: String, password: String) -> Result<Vec<
     stream.write(&string_to_buffer(name)).unwrap();
     stream.write(&string_to_buffer(password)).unwrap();
 
-    let mut buffer = [0 as u8; 256]; // using 256 KB buffer
+    let mut buffer = [0 as u8; 256]; // using 256 B buffer
     match stream.read_exact(&mut buffer) {
         Ok(_) => {
             let data = buffer[1..buffer[0] as usize + 1].to_vec();

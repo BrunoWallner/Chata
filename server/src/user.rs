@@ -72,7 +72,7 @@ pub fn delete_user(accounts: &mut Vec<Account>, user: String) -> Result<(), Stri
     Err(String::from("could not find user"))
 }
 
-pub fn create_user(accounts: &mut Vec<Account>, userdata: &mut Vec<UserData>, name: String, password: String, id: String) -> Result<(), String> {
+pub fn create_user(accounts: &mut Vec<Account>, userdata: &mut Vec<UserData>, name: String, password: String, id: String) -> Result<Vec<u8>, String> {
     if name.contains("::") || id.contains("::") {
         return Err(String::from("invalid username"));
     }
@@ -88,12 +88,12 @@ pub fn create_user(accounts: &mut Vec<Account>, userdata: &mut Vec<UserData>, na
     });
 
     if !does_user_already_exist(&accounts, &account) {
-        accounts.push(account);
+        accounts.push(account.clone());
     } else {
         return Err("user already exist".to_string());
     }
 
-    Ok(())
+    Ok(account.token)
 }
 pub fn does_user_already_exist(
     accounts: &Vec<Account>,
